@@ -158,7 +158,7 @@ async function runAutopilotAgent(){
   if(source.length>60000){$('agentStatus').textContent='Source content 60,000 characters se zyada hai. Source URL use karo ya content ko shorten karo.';return}
   $('runAgent').disabled=true;$('agentStatus').textContent='Free Autopilot workflow start ho raha hai…';
   try{
-    var r=await fetch('https://api.github.com/repos/MenuRadar/MenuRadar.github.io/actions/workflows/menuradar-agent.yml/dispatches',{method:'POST',headers:{Authorization:'Bearer '+token,Accept:'application/vnd.github+json','Content-Type':'application/json'},body:JSON.stringify({ref:'main',inputs:{source:source,source_url:url,max_images:images}})});
+    var r=await fetch('https://api.github.com/repos/MenuRadar/MenuRadar.github.io/dispatches',{method:'POST',headers:{Authorization:'Bearer '+token,Accept:'application/vnd.github+json','Content-Type':'application/json'},body:JSON.stringify({event_type:'menuradar_agent',client_payload:{source:source,source_url:url,max_images:images}})});
     if(!r.ok){var t=await r.text();throw new Error('Agent dispatch failed ('+r.status+'): '+t.slice(0,180))}
     $('agentStatus').textContent='Free Agent start ho gaya. Source parse, images, article, homepage aur sitemap automatically update honge.';$('agentStatus').style.color='#16834b';
   }catch(e){$('agentStatus').textContent=e.message||String(e);$('agentStatus').style.color=''}finally{$('runAgent').disabled=false}
