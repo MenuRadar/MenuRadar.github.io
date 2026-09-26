@@ -66,7 +66,7 @@ def infer_country(src):
 def gemini(src):
     key=os.environ.get("GEMINI_API_KEY","").strip()
     if not key: return None
-    prompt="""Return ONLY valid JSON for a restaurant menu article. Keys: brand,location,address,country,slug,keyword,title,metaDescription,intro,sections,relatedQueries,imageQueries. sections contain name,icon,description,items; items contain name,price,note. Preserve source facts, never invent exact prices, and use natural SEO. Country must be usa, uk, france, brazil or australia. Source:\n"""+src
+    prompt="""Return ONLY valid JSON for a COMPLETE restaurant menu article. Keys: brand,location,address,country,slug,keyword,title,metaDescription,intro,sections,relatedQueries,imageQueries. sections contain name,icon,description,items; items contain name,price,note. CRITICAL: preserve EVERY menu category/section and EVERY identifiable menu item, price, size/variant and note found in the source. Do not summarize, sample, truncate, deduplicate, or replace the menu with only popular items. If the source contains 212 items, the JSON must represent all 212 items. Keep source order where practical. Never invent exact prices; if a price is absent, use an empty price. Use natural SEO only in title/meta/intro and do not alter source facts. Country must be usa, uk, france, brazil or australia. Source:\n"""+src
     models=[]
     preferred=os.environ.get("GEMINI_MODEL","").strip()
     if preferred: models.append(preferred)
