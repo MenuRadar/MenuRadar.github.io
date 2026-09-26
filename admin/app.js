@@ -79,8 +79,9 @@ async function runAI(){
     if(!document.querySelector('.section-editor'))addSection({name:'Menu',icon:'🍽️'});
     refreshPreview();
     aiSetStatus('Gemini analysis complete — article fields, SEO and menu sections filled. Preview check karo.',true);
+    return true;
     document.querySelector('.preview-panel').scrollIntoView({behavior:'smooth',block:'start'});
-  }catch(e){aiSetStatus(e.message||String(e));alert(e.message||String(e))}
+  }catch(e){aiSetStatus(e.message||String(e));alert(e.message||String(e));return false}
   finally{$('runAI').disabled=false}
 }
 function cleanImportText(s){return String(s||'').replace(/\\r/g,'').trim()}
@@ -111,23 +112,30 @@ function parseImportedContent(raw){
   sections=sections.filter(function(s){return s.items.length||s.name});
   return {title:title||'Restaurant Menu',intro:intro.join(' '),sections:sections};
 }
-function importFullContent(){
+async function importFullContent(){
+  var raw=$('rawContent').value.trim();
+  if(!raw){$('importStatus').textContent='Pehle full content paste karo.';return}
+  if(!($('geminiKey').value||'').trim()){
+    $('importStatus').textContent='Gemini API key add karo — phir AI content ko clean, correct aur structure karega.';
+    $('geminiKey').focus();return
+  }
+  if(raw.length>120000){$('importStatus').textContent='Content 120,000 characters se zyada hai. Isay parts mein process karo.';return}
+  $('aiSource').value=raw;
+  $('importStatus').textContent='🤖 AI content ko read, clean, structure aur SEO optimize kar raha hai…';
+  $('importStatus').style.color='';
+  var ok=await runAI();
+  if(!ok){$('importStatus').textContent='AI processing fail hui — article publish nahi kiya gaya.';return}
+  $('importStatus').textContent='✅ AI ne content process kar diya. Article publish kar raha hoon…';
   try{
-    var raw=$('rawContent').value.trim(),p=parseImportedContent(raw),title=p.title;
-    $('brand').value=title.replace(/\\s+(menu|menus).*$/i,'').trim()||$('brand').value;
-    $('keyword').value=title;
-    $('intro').value=p.intro||'This guide organizes the menu by category with reference pricing and popular choices.';
-    $('metaTitle').value=title+' & Prices | MenuRadar';
-    $('metaDescription').value=title+' with menu categories, popular items and reference pricing. Prices and availability may vary by location and ordering channel.';
-    $('sections').innerHTML='';sectionCount=0;
-    p.sections.forEach(function(s){addSection(s)});
-    refreshPreview();
-    $('importStatus').textContent='Content read, structured and designed. Ab preview check karke publish karo.';
+    await publish();
+    $('importStatus').textContent='✅ Content AI se process karke MenuRadar par publish/update ho gaya.';
     $('importStatus').style.color='#16834b';
-    window.scrollTo({top:document.querySelector('.panel:nth-of-type(4)').offsetTop,behavior:'smooth'});
-  }catch(e){$('importStatus').textContent=e.message||String(e);$('importStatus').style.color=''}
+  }catch(e){
+    $('importStatus').textContent=e.message||String(e);
+  }
 }
-$('parseContent').onclick=importFullContent;$('clearContent').onclick=function(){$('rawContent').value='';$('importStatus').textContent='Paste content and let Article Studio structure it.'};$('addSection').onclick=function(){addSection()};$('refreshArticles').onclick=loadArticles;$('articleSearch').oninput=renderArticleList;$('articleCountry').onchange=renderArticleList;
+$('parseContent').onclick=importFullContent;
+$('addSection').onclick=function(){addSection()};$('refreshArticles').onclick=loadArticles;$('articleSearch').oninput=renderArticleList;$('articleCountry').onchange=renderArticleList;
 $('coverImage').onchange=function(e){var file=e.target.files&&e.target.files[0];if(!file)return;var id=crypto.randomUUID(),reader=new FileReader();reader.onload=function(){coverImage={id:id,file:file,data:reader.result,url:'',alt:$('keyword').value.trim()||'restaurant menu cover',caption:''};renderCover()};reader.readAsDataURL(file)};document.querySelector('.cover-box').onclick=function(){ $('coverImage').click() };document.querySelector('.upload-box:not(.cover-box)').onclick=function(){ $('images').click() };$('images').onchange=function(e){[].slice.call(e.target.files).forEach(function(file){var id=crypto.randomUUID(),reader=new FileReader();reader.onload=function(){images.push({id:id,file:file,data:reader.result,url:'',alt:'',caption:''});renderImages()};reader.readAsDataURL(file)})};
 function renderCover(){var box=$('coverPreview');if(!box)return;if(!coverImage){box.innerHTML='<div class="cover-empty">No cover image selected.</div>';return}box.innerHTML='<div class="cover-card"><img src="'+(coverImage.url||coverImage.data)+'" alt=""><div class="body"><label>Cover alt text<input id="coverAlt" value="'+esc(coverImage.alt||$('keyword').value||'restaurant menu cover')+'"></label><button class="remove" id="removeCover">Remove cover</button></div></div>';$('coverAlt').oninput=function(){if(coverImage)coverImage.alt=this.value};$('removeCover').onclick=function(){coverImage=null;$('coverImage').value='';renderCover()}}function renderImages(){$('imageList').innerHTML=images.map(function(im){return '<div class="image-card"><img src="'+(im.url||im.data)+'" alt=""><div class="body"><label>Alt text<input data-img="'+im.id+'" data-field="alt" value="'+esc(im.alt||$('keyword').value||'restaurant menu')+'"></label><label>Caption<input data-img="'+im.id+'" data-field="caption" value="'+esc(im.caption||'MenuRadar restaurant menu image')+'"></label><button class="remove" data-remove="'+im.id+'">Remove</button></div></div>'}).join('');[].slice.call(document.querySelectorAll('[data-field]')).forEach(function(x){x.oninput=function(){var im=images.find(function(a){return a.id===x.dataset.img});if(im)im[x.dataset.field]=x.value}});[].slice.call(document.querySelectorAll('[data-remove]')).forEach(function(x){x.onclick=function(){images=images.filter(function(a){return a.id!==x.dataset.remove});renderImages()}})}
 async function uploadOneImage(key,im){if(im.url)return;var fd=new FormData();fd.append('key',key);fd.append('image',im.file);var r=await fetch('https://api.imgbb.com/1/upload',{method:'POST',body:fd}),j=await r.json();if(!j.success)throw new Error('Image upload failed: '+((j.error&&j.error.message)||'ImgBB error'));im.url=j.data.display_url;im.deleteUrl=j.data.delete_url}async function uploadImages(key){if(coverImage&&!coverImage.url){await uploadOneImage(key,coverImage);setStatus('Cover image uploaded.',true)}for(var i=0;i<images.length;i++){var im=images[i];if(im.url)continue;var fd=new FormData();fd.append('key',key);fd.append('image',im.file);var r=await fetch('https://api.imgbb.com/1/upload',{method:'POST',body:fd}),j=await r.json();if(!j.success)throw new Error('Image upload failed: '+((j.error&&j.error.message)||'ImgBB error'));im.url=j.data.display_url;im.deleteUrl=j.data.delete_url;setStatus('Uploaded image '+(i+1)+' of '+images.length+'…',true)}}
