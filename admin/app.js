@@ -154,12 +154,13 @@ addSection({name:'Chicken',icon:'🍗'});addSection({name:'Sides',icon:'🍟'});
 async function runAutopilotAgent(){
   var token=sessionStorage.getItem('menuradar_admin_token')||($('ghToken')&&$('ghToken').value.trim()),source=($('agentSource').value||'').trim(),url=($('agentSourceUrl').value||'').trim(),images=($('agentMaxImages').value||'4');
   if(!token){$('agentStatus').textContent='Pehle Token Key se login karo.';return}
-  if(!source&&!url){$('agentStatus').textContent='Source content ya Source URL do.';return}\n  if(source.length>60000){$('agentStatus').textContent='Source content 60,000 characters se zyada hai. Source URL use karo ya content ko shorten karo.';return}
-  $('runAgent').disabled=true;$('agentStatus').textContent='Autopilot workflow start ho raha hai…';
+  if(!source&&!url){$('agentStatus').textContent='Source content ya Source URL do.';return}
+  if(source.length>60000){$('agentStatus').textContent='Source content 60,000 characters se zyada hai. Source URL use karo ya content ko shorten karo.';return}
+  $('runAgent').disabled=true;$('agentStatus').textContent='Free Autopilot workflow start ho raha hai…';
   try{
-    var r=await fetch('https://api.github.com/repos/MenuRadar/MenuRadar.github.io/actions/workflows/menuradar-agent.yml/dispatches',{method:'POST',headers:{Authorization:'Bearer '+token,Accept:'application/vnd.github+json','Content-Type':'application/json'},body:JSON.stringify({ref:'main',inputs:{source:source,source_url:url,max_images:images,model:($('aiModel').value||'gpt-5.6-luna')}})});
+    var r=await fetch('https://api.github.com/repos/MenuRadar/MenuRadar.github.io/actions/workflows/menuradar-agent.yml/dispatches',{method:'POST',headers:{Authorization:'Bearer '+token,Accept:'application/vnd.github+json','Content-Type':'application/json'},body:JSON.stringify({ref:'main',inputs:{source:source,source_url:url,max_images:images}})});
     if(!r.ok){var t=await r.text();throw new Error('Agent dispatch failed ('+r.status+'): '+t.slice(0,180))}
-    $('agentStatus').textContent='Agent start ho gaya. GitHub Actions source analyze, images process aur article publish karega.';$('agentStatus').style.color='#16834b';
+    $('agentStatus').textContent='Free Agent start ho gaya. Source parse, images, article, homepage aur sitemap automatically update honge.';$('agentStatus').style.color='#16834b';
   }catch(e){$('agentStatus').textContent=e.message||String(e);$('agentStatus').style.color=''}finally{$('runAgent').disabled=false}
 }
 $('runAgent').onclick=runAutopilotAgent;
