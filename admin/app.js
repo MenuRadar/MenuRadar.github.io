@@ -49,42 +49,52 @@ function aiPrompt(source){
   return 'You are MenuRadar Article AI. Transform the supplied source into structured restaurant-menu article data. Preserve factual menu item names, prices and location information from the source; never invent exact prices. If a price is absent, use an empty string. Rewrite prose into original, useful wording rather than copying long passages. Create natural SEO coverage without keyword stuffing. Return ONLY valid JSON matching this shape: {"brand":"","location":"","address":"","country":"usa|uk|france|brazil|australia","slug":"","keyword":"","title":"","metaDescription":"","intro":"","sections":[{"name":"","icon":"","description":"","items":[{"name":"","price":"","note":""}]}],"internalLinks":[{"href":"","text":""}],"imageAlt":"","imageCaption":""}. Use an empty array when data is unavailable. Keep section icons as emoji. Country should be inferred only when supported by the source; otherwise use usa. Source:\\n\\n'+source;
 }
 async function runAI(){
-  var key=($('geminiKey').value||'').trim(),source=($('aiSource').value||'').trim(),model=($('aiModel').value||'gemini-2.5-flash').trim();
-  if(!key){aiSetStatus('Gemini API key add karo.');return}
-  if(!source){aiSetStatus('Pehle source content paste karo.');return}
-  if(source.length>120000){aiSetStatus('Source bohat lamba hai. Pehle isay thora shorten karo.');return}
+  var key=($('geminiKey').value||'').trim(),source=($('aiSource').value||'').trim(),preferred=($('aiModel').value||'').trim();
+  if(!key){aiSetStatus('Gemini API key add karo.');return false}
+  if(!source){aiSetStatus('Pehle source content paste karo.');return false}
+  if(source.length>120000){aiSetStatus('Source bohat lamba hai. Pehle isay thora shorten karo.');return false}
+  sessionStorage.setItem('menuradar_gemini_key',key);
+  sessionStorage.setItem('menuradar_gemini_model',preferred||'gemini-2.5-flash');
   $('runAI').disabled=true;aiSetStatus('Gemini AI source analyze kar raha hai…');
   try{
-    var url='https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(model)+':generateContent';
-    var r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':key},body:JSON.stringify({
-      contents:[{parts:[{text:aiPrompt(source)}]}],
-      generationConfig:{responseMimeType:'application/json',temperature:0.2}
-    })});
-    var raw=await r.text(),j={};try{j=JSON.parse(raw)}catch(e){}
-    if(!r.ok)throw new Error((j.error&&j.error.message)||'Gemini request failed ('+r.status+').');
-    var text=extractAIText(j).trim(),data;try{data=JSON.parse(text)}catch(e){throw new Error('Gemini ne valid JSON return nahi kiya.')}
-    if(!data||!data.keyword)throw new Error('Gemini output incomplete hai.');
-    $('brand').value=data.brand||$('brand').value;
-    $('location').value=data.location||'';
-    $('address').value=data.address||'';
-    $('country').value=data.country||'usa';
-    $('slug').value=data.slug||slugify((data.brand||'restaurant')+'-'+(data.location||'menu'));
-    $('keyword').value=data.keyword;
-    $('metaTitle').value=data.title||data.keyword+' & Prices | MenuRadar';
-    $('metaDescription').value=data.metaDescription||data.keyword+' menu, popular items and reference pricing. Prices and availability may vary by location and ordering channel.';
-    $('intro').value=data.intro||'Explore the menu by category with reference pricing and popular choices.';
-    $('links').value=(data.internalLinks||[]).map(function(x){return (x.href||'')+'|'+(x.text||x.href||'')}).filter(Boolean).join('\\n');
-    $('sections').innerHTML='';sectionCount=0;
-    (data.sections||[]).forEach(function(s){addSection({name:s.name||'Menu',icon:s.icon||'🍽️',desc:s.description||'Menu options and reference pricing.',items:(s.items||[]).map(function(i){return{name:i.name||'',price:i.price||'',note:i.note||''}})})});
-    if(!document.querySelector('.section-editor'))addSection({name:'Menu',icon:'🍽️'});
-    refreshPreview();
-    aiSetStatus('Gemini analysis complete — article fields, SEO and menu sections filled. Preview check karo.',true);
-    return true;
-    document.querySelector('.preview-panel').scrollIntoView({behavior:'smooth',block:'start'});
+    var models=[];
+    if(preferred)models.push(preferred);
+    ['gemini-2.5-flash','gemini-2.5-flash-lite'].forEach(function(m){if(models.indexOf(m)<0)models.push(m)});
+    var lastError='';
+    for(var mi=0;mi<models.length;mi++){
+      var model=models[mi];
+      var url='https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(model)+':generateContent';
+      var r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':key},body:JSON.stringify({
+        contents:[{parts:[{text:aiPrompt(source)}]}],
+        generationConfig:{responseMimeType:'application/json',temperature:0.2}
+      })});
+      var raw=await r.text(),j={};try{j=JSON.parse(raw)}catch(e){}
+      if(!r.ok){lastError=(j.error&&j.error.message)||('Gemini request failed ('+r.status+').');continue}
+      var text=extractAIText(j).trim(),data;
+      try{data=JSON.parse(text)}catch(e){lastError='Gemini ne valid JSON return nahi kiya.';continue}
+      if(!data||!data.keyword){lastError='Gemini output incomplete hai.';continue}
+      $('brand').value=data.brand||$('brand').value;
+      $('location').value=data.location||'';
+      $('address').value=data.address||'';
+      $('country').value=data.country||'usa';
+      $('slug').value=data.slug||slugify((data.brand||'restaurant')+'-'+(data.location||'menu'));
+      $('keyword').value=data.keyword;
+      $('metaTitle').value=data.title||data.keyword+' & Prices | MenuRadar';
+      $('metaDescription').value=data.metaDescription||data.keyword+' menu, popular items and reference pricing. Prices and availability may vary by location and ordering channel.';
+      $('intro').value=data.intro||'Explore the menu by category with reference pricing and popular choices.';
+      $('links').value=(data.internalLinks||[]).map(function(x){return (x.href||'')+'|'+(x.text||x.href||'')}).filter(Boolean).join('\n');
+      $('sections').innerHTML='';sectionCount=0;
+      (data.sections||[]).forEach(function(s){addSection({name:s.name||'Menu',icon:s.icon||'🍽️',desc:s.description||'Menu options and reference pricing.',items:(s.items||[]).map(function(i){return{name:i.name||'',price:i.price||'',note:i.note||''}})})});
+      if(!document.querySelector('.section-editor'))addSection({name:'Menu',icon:'🍽️'});
+      refreshPreview();
+      aiSetStatus('Gemini '+model+' analysis complete — article fields, SEO and menu sections filled.',true);
+      return true;
+    }
+    throw new Error(lastError||'Gemini request failed.');
   }catch(e){aiSetStatus(e.message||String(e));alert(e.message||String(e));return false}
   finally{$('runAI').disabled=false}
 }
-function cleanImportText(s){return String(s||'').replace(/\\r/g,'').trim()}
+function cleanImportTextfunction cleanImportText(s){return String(s||'').replace(/\\r/g,'').trim()}
 function parsePriceText(s){var m=String(s||'').match(/(?:\\$|£|€|R\\$)\\s?\\d+(?:[.,]\\d{1,2})?(?:\\s?[-–]\\s?(?:\\$|£|€|R\\$)?\\s?\\d+(?:[.,]\\d{1,2})?)?/);return m?m[0]:''}
 function parseImportedContent(raw){
   raw=cleanImportText(raw);if(!raw)throw new Error('Pehle content paste karo.');
@@ -115,26 +125,20 @@ function parseImportedContent(raw){
 async function importFullContent(){
   var raw=$('rawContent').value.trim();
   if(!raw){$('importStatus').textContent='Pehle full content paste karo.';return}
-  if(!($('geminiKey').value||'').trim()){
-    $('importStatus').textContent='Gemini API key add karo — phir AI content ko clean, correct aur structure karega.';
-    $('geminiKey').focus();return
-  }
+  var key=($('geminiKey').value||sessionStorage.getItem('menuradar_gemini_key')||'').trim();
+  if(!key){$('importStatus').textContent='Gemini API key add karo — key sirf is session mein save hogi.';$('geminiKey').focus();return}
+  $('geminiKey').value=key;sessionStorage.setItem('menuradar_gemini_key',key);
   if(raw.length>120000){$('importStatus').textContent='Content 120,000 characters se zyada hai. Isay parts mein process karo.';return}
   $('aiSource').value=raw;
-  $('importStatus').textContent='🤖 AI content ko read, clean, structure aur SEO optimize kar raha hai…';
-  $('importStatus').style.color='';
+  $('importStatus').textContent='🤖 AI content ko read, clean, structure aur SEO optimize kar raha hai…';$('importStatus').style.color='';
   var ok=await runAI();
-  if(!ok){$('importStatus').textContent='AI processing fail hui — article publish nahi kiya gaya.';return}
-  $('importStatus').textContent='✅ AI ne content process kar diya. Article publish kar raha hoon…';
-  try{
-    await publish();
-    $('importStatus').textContent='✅ Content AI se process karke MenuRadar par publish/update ho gaya.';
-    $('importStatus').style.color='#16834b';
-  }catch(e){
-    $('importStatus').textContent=e.message||String(e);
-  }
+  if(!ok){$('importStatus').textContent='❌ AI processing fail hui — article publish nahi kiya gaya.';return}
+  $('importStatus').textContent='✅ AI processing complete. Ab article publish ho raha hai…';
+  var published=await publish();
+  $('importStatus').textContent=published?'✅ AI se clean/structure karke article publish/update ho gaya.':'❌ Article publish nahi hua. Upar status mein error check karo.';
+  if(published)$('importStatus').style.color='#16834b';
 }
-$('parseContent').onclick=importFullContent;
+$('parseContent').onclick=importFullContent;$('parseContent').onclick=importFullContent;
 $('addSection').onclick=function(){addSection()};$('refreshArticles').onclick=loadArticles;$('articleSearch').oninput=renderArticleList;$('articleCountry').onchange=renderArticleList;
 $('coverImage').onchange=function(e){var file=e.target.files&&e.target.files[0];if(!file)return;var id=crypto.randomUUID(),reader=new FileReader();reader.onload=function(){coverImage={id:id,file:file,data:reader.result,url:'',alt:$('keyword').value.trim()||'restaurant menu cover',caption:''};renderCover()};reader.readAsDataURL(file)};document.querySelector('.cover-box').onclick=function(){ $('coverImage').click() };document.querySelector('.upload-box:not(.cover-box)').onclick=function(){ $('images').click() };$('images').onchange=function(e){[].slice.call(e.target.files).forEach(function(file){var id=crypto.randomUUID(),reader=new FileReader();reader.onload=function(){images.push({id:id,file:file,data:reader.result,url:'',alt:'',caption:''});renderImages()};reader.readAsDataURL(file)})};
 function renderCover(){var box=$('coverPreview');if(!box)return;if(!coverImage){box.innerHTML='<div class="cover-empty">No cover image selected.</div>';return}box.innerHTML='<div class="cover-card"><img src="'+(coverImage.url||coverImage.data)+'" alt=""><div class="body"><label>Cover alt text<input id="coverAlt" value="'+esc(coverImage.alt||$('keyword').value||'restaurant menu cover')+'"></label><button class="remove" id="removeCover">Remove cover</button></div></div>';$('coverAlt').oninput=function(){if(coverImage)coverImage.alt=this.value};$('removeCover').onclick=function(){coverImage=null;$('coverImage').value='';renderCover()}}function renderImages(){$('imageList').innerHTML=images.map(function(im){return '<div class="image-card"><img src="'+(im.url||im.data)+'" alt=""><div class="body"><label>Alt text<input data-img="'+im.id+'" data-field="alt" value="'+esc(im.alt||$('keyword').value||'restaurant menu')+'"></label><label>Caption<input data-img="'+im.id+'" data-field="caption" value="'+esc(im.caption||'MenuRadar restaurant menu image')+'"></label><button class="remove" data-remove="'+im.id+'">Remove</button></div></div>'}).join('');[].slice.call(document.querySelectorAll('[data-field]')).forEach(function(x){x.oninput=function(){var im=images.find(function(a){return a.id===x.dataset.img});if(im)im[x.dataset.field]=x.value}});[].slice.call(document.querySelectorAll('[data-remove]')).forEach(function(x){x.onclick=function(){images=images.filter(function(a){return a.id!==x.dataset.remove});renderImages()}})}
@@ -146,7 +150,7 @@ async function ghPut(token,repo,path,content,message,sha,branch){var body={messa
 function decodeGitHub(s){return decodeURIComponent(escape(atob(s.replace(/\n/g,''))))}
 function insertHomepageLink(html,d){var href='/'+d.country+'/'+d.slug+'/';if(html.indexOf('href="'+href+'"')>=0)return html;var card='<a href="'+href+'"><strong>🍽️ '+esc(d.brand)+' — '+esc(d.address||d.loc||d.slug)+'</strong><br><small>MenuRadar restaurant/menu guide</small></a>';var marker='<div class="topic-grid">',i=html.indexOf(marker);return i<0?html:html.slice(0,i+marker.length)+'\n'+card+html.slice(i+marker.length)}
 function insertSitemap(xml,d){var loc='https://menuradar.github.io/'+d.country+'/'+d.slug+'/';if(xml.indexOf('<loc>'+loc+'</loc>')>=0)return xml;var entry='  <url><loc>'+loc+'</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>\n';return xml.replace('</urlset>',entry+'</urlset>')}
-async function publish(){try{var key=$('imgKey').value.trim(),token=sessionStorage.getItem('menuradar_admin_token')||$('ghToken').value.trim(),repo=$('repo').value.trim(),branch=$('branch').value.trim()||'main',d=articleData();if(!token)throw new Error('Add the GitHub token first.');if((images.length||coverImage)&&!key)throw new Error('Add the image API key first.');if(!d.slug)throw new Error('Add a URL slug.');$('publishBtn').disabled=true;setStatus('Uploading images…');if(images.length||coverImage)await uploadImages(key);var html=renderArticle(d),path=editingPath||d.country+'/'+d.slug+'/index.html',existing=null;try{existing=await ghGet(token,repo,path)}catch(e){}await ghPut(token,repo,path,html,'Publish '+d.keyword+' — '+(d.loc||d.slug),existing&&existing.sha,branch);setStatus(editingPath?'Article updated. Updating homepage and sitemap…':'Article published. Updating homepage and sitemap…',true);var home=await ghGet(token,repo,'index.html'),oldHome=decodeGitHub(home.content),newHome=insertHomepageLink(oldHome,d);if(newHome!==oldHome)await ghPut(token,repo,'index.html',newHome,'Add article to MenuRadar homepage',home.sha,branch);var sm=await ghGet(token,repo,'sitemap.xml'),oldSm=decodeGitHub(sm.content),newSm=insertSitemap(oldSm,d);if(newSm!==oldSm)await ghPut(token,repo,'sitemap.xml',newSm,'Add article to sitemap',sm.sha,branch);setStatus((editingPath?'Updated':'Published')+' + homepage + sitemap updated: '+path,true);editingPath='';$('publishBtn').textContent='Upload images & Publish';refreshPreview();loadArticles()}catch(e){setStatus(e.message||String(e));alert(e.message||e)}finally{$('publishBtn').disabled=false}}
+async function publish(){try{var key=$('imgKey').value.trim(),token=sessionStorage.getItem('menuradar_admin_token')||$('ghToken').value.trim(),repo=$('repo').value.trim(),branch=$('branch').value.trim()||'main',d=articleData();if(!token)throw new Error('Add the GitHub token first.');if((images.length||coverImage)&&!key)throw new Error('Add the image API key first.');if(!d.slug)throw new Error('Add a URL slug.');$('publishBtn').disabled=true;setStatus('Uploading images…');if(images.length||coverImage)await uploadImages(key);var html=renderArticle(d),path=editingPath||d.country+'/'+d.slug+'/index.html',existing=null;try{existing=await ghGet(token,repo,path)}catch(e){}await ghPut(token,repo,path,html,'Publish '+d.keyword+' — '+(d.loc||d.slug),existing&&existing.sha,branch);setStatus(editingPath?'Article updated. Updating homepage and sitemap…':'Article published. Updating homepage and sitemap…',true);var home=await ghGet(token,repo,'index.html'),oldHome=decodeGitHub(home.content),newHome=insertHomepageLink(oldHome,d);if(newHome!==oldHome)await ghPut(token,repo,'index.html',newHome,'Add article to MenuRadar homepage',home.sha,branch);var sm=await ghGet(token,repo,'sitemap.xml'),oldSm=decodeGitHub(sm.content),newSm=insertSitemap(oldSm,d);if(newSm!==oldSm)await ghPut(token,repo,'sitemap.xml',newSm,'Add article to sitemap',sm.sha,branch);setStatus((editingPath?'Updated':'Published')+' + homepage + sitemap updated: '+path,true);editingPath='';$('publishBtn').textContent='Upload images & Publish';refreshPreview();loadArticles();return true}catch(e){setStatus(e.message||String(e));alert(e.message||e);return false}finally{$('publishBtn').disabled=false}}
 $('publishBtn').onclick=publish;$('saveImgKey').onclick=function(){localStorage.setItem('menuradar_img_key',$('imgKey').value.trim());setStatus('Image key saved on this device.',true)};var saved=localStorage.getItem('menuradar_img_key');if(saved)$('imgKey').value=saved;
 addSection({name:'Chicken',icon:'🍗'});addSection({name:'Sides',icon:'🍟'});addSection({name:'Drinks',icon:'🥤'});refreshPreview();
 async function loadAgentPreview(){
@@ -167,5 +171,11 @@ async function loadAgentPreview(){
 async function loadAgentPreview(){var token=sessionStorage.getItem('menuradar_admin_token')||($('ghToken')&&$('ghToken').value.trim());if(!token)return false;try{var r=await fetch('https://api.github.com/repos/MenuRadar/MenuRadar.github.io/contents/admin/agent-preview.json?ref=main',{headers:{Authorization:'Bearer '+token,Accept:'application/vnd.github+json'}});if(!r.ok)return false;var j=await r.json(),data=JSON.parse(decodeGitHub(j.content));if(data&&data.html&&$('preview'))$('preview').srcdoc=data.html;if(data&&$('agentStatus')){$('agentStatus').textContent='🤖 '+(data.status||'Agent working…');$('agentStatus').style.color='#16834b'}return !!(data&&data.done)}catch(x){return false}}
 async function runAutopilotAgent(){var token=sessionStorage.getItem('menuradar_admin_token')||($('ghToken')&&$('ghToken').value.trim()),source=($('agentSource').value||'').trim(),url=($('agentSourceUrl').value||'').trim(),maxImages=($('agentMaxImages').value||'4');if(!token){$('agentStatus').textContent='Pehle Token Key se login karo.';return}if(!source&&!url){$('agentStatus').textContent='Source URL do.';return}if(source.length>60000){$('agentStatus').textContent='Source content 60,000 characters se zyada hai.';return}$('runAgent').disabled=true;$('agentStatus').textContent='🧠 Gemini source analyze kar raha hai…';if($('preview'))$('preview').scrollIntoView({behavior:'smooth',block:'start'});try{var r=await fetch('https://api.github.com/repos/MenuRadar/MenuRadar.github.io/dispatches',{method:'POST',headers:{Authorization:'Bearer '+token,Accept:'application/vnd.github+json','Content-Type':'application/json'},body:JSON.stringify({event_type:'menuradar_agent',client_payload:{source:source,source_url:url,max_images:maxImages}})});if(!r.ok)throw new Error('Agent start failed ('+r.status+')');if(window.agentPreviewTimer)clearInterval(window.agentPreviewTimer);window.agentPreviewTimer=setInterval(async function(){var done=await loadAgentPreview();if(done){clearInterval(window.agentPreviewTimer);window.agentPreviewTimer=null;loadArticles()}},5000)}catch(x){$('agentStatus').textContent=x.message||String(x)}finally{$('runAgent').disabled=false}}
 
+(function(){
+  var savedGemini=sessionStorage.getItem('menuradar_gemini_key');if(savedGemini&&$('geminiKey'))$('geminiKey').value=savedGemini;
+  var savedModel=sessionStorage.getItem('menuradar_gemini_model');if(savedModel&&$('aiModel'))$('aiModel').value=savedModel;
+  if($('geminiKey'))$('geminiKey').addEventListener('input',function(){sessionStorage.setItem('menuradar_gemini_key',this.value.trim())});
+  if($('aiModel'))$('aiModel').addEventListener('change',function(){sessionStorage.setItem('menuradar_gemini_model',this.value.trim())});
+})();
 $('runAgent').onclick=runAutopilotAgent;
 $('agentFromAI').onclick=function(){var s=($('aiSource').value||'').trim();if(!s){$('agentStatus').textContent='AI Source box empty hai.';return}$('agentSource').value=s;$('agentStatus').textContent='AI Source Autopilot mein copy ho gaya.';$('agentSource').focus()};
