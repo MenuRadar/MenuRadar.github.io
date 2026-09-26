@@ -25,6 +25,15 @@ class TextParser(HTMLParser):
             self.parts.append(t)
             if self.in_title: self.title+=t
 
+def write_agent_preview(status, data, ims=None, done=False):
+    payload=dict(data or {})
+    payload["status"]=status
+    payload["done"]=done
+    payload["updated_at"]=__import__("datetime").datetime.utcnow().isoformat()+"Z"
+    payload["html"]=render(payload, ims or [])
+    Path("admin/agent-preview.json").write_text(json.dumps(payload,ensure_ascii=False),encoding="utf-8")
+    os.system("git add admin/agent-preview.json && git config user.name 'MenuRadar Agent' && git config user.email '41898282+github-actions[bot]@users.noreply.github.com' && git commit -m '🤖 MenuRadar Agent live preview' >/dev/null 2>&1 || true)
+
 def source():
     s=os.environ.get("AGENT_SOURCE","").strip()
     u=os.environ.get("AGENT_SOURCE_URL","").strip()
@@ -131,13 +140,23 @@ def render(d,ims):
     return f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{esc(d.get("title"))}</title><meta name="description" content="{esc(d.get("metaDescription"))}"><meta name="robots" content="index,follow"><link rel="canonical" href="{BASE}/{c}/{esc(d.get("slug"))}/"><link rel="stylesheet" href="/styles.css"><style>.menu-hero{{padding:42px 20px;background:linear-gradient(135deg,#111827,#1f2937);color:#fff}}.menu-hero-inner{{max-width:1100px;margin:auto}}.menu-hero h1{{font-size:clamp(32px,5vw,58px);margin:12px 0}}.menu-cover,.article-image{{margin:28px auto;max-width:980px}}.menu-cover img,.article-image img{{display:block;width:100%;max-height:520px;object-fit:cover;border-radius:20px}}.menu-cover figcaption,.article-image figcaption{{font-size:12px;opacity:.7;margin-top:7px}}.menu-section{{max-width:1100px;margin:34px auto;padding:26px;border:1px solid #e5e7eb;border-radius:20px;background:#fff}}.menu-section-head{{display:flex;gap:16px;align-items:flex-start;margin-bottom:18px}}.menu-icon{{font-size:30px}}.menu-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}}.menu-card{{display:flex;justify-content:space-between;gap:15px;padding:18px;border-radius:14px;background:#f8fafc;border:1px solid #e5e7eb}}.menu-card h3{{margin:0 0 5px}}.menu-card p{{margin:0;color:#64748b;font-size:14px}}.menu-card strong{{white-space:nowrap}}</style></head><body><header class="site-header"><a class="logo" href="/">Menu<span>Radar</span></a></header><main><section class="menu-hero"><div class="menu-hero-inner"><p class="eyebrow">{esc(c.upper())} RESTAURANT MENU</p><h1>{esc(d.get("keyword"))}{(" — "+esc(loc)) if loc else ""}</h1><p class="lead">{esc(d.get("intro"))}</p>{cover}</div></section><div class="section"><p>Menu information and prices can vary by location, date and ordering channel. Check the current local menu for final availability and pricing.</p></div>{"".join(secs)}{inside}<section class="section"><h2>Related Menu Searches</h2><ul>{rel}</ul><p><a href="/{c}/">Explore more {c.upper()} restaurant menus →</a></p></section></main><footer><div class="footer-inner"><b>MenuRadar</b><span>Restaurant Menus, Prices & More</span></div></footer></body></html>'''
 
 def main():
-    src=source(); d=gemini(src) or build_data(src); d["country"]=d.get("country") if d.get("country") in {"usa","uk","france","brazil","australia"} else "usa"; d["slug"]=slugify(d.get("slug") or (d.get("brand","restaurant")+"-menu")); d["keyword"]=d.get("keyword") or (d.get("brand","Restaurant")+" menu"); d["imageQueries"]=d.get("imageQueries") or [d["keyword"],d.get("brand","restaurant")+" food"]; ims=get_images(d["imageQueries"],d["slug"],max(1,min(int(os.environ.get("MAX_IMAGES","4")),6)))
-    path=f'{d["country"]}/{d["slug"]}/index.html'; p=Path(path); p.parent.mkdir(parents=True,exist_ok=True); p.write_text(render(d,ims),encoding="utf-8")
-    h=Path("index.html"); s=h.read_text(encoding="utf-8"); href="/"+path.rsplit("/index.html",1)[0]+"/"; card=f'<a href="{href}"><strong>🍽️ {esc(d["title"])}</strong><br><small>MenuRadar restaurant/menu guide</small></a>\n'
-    if href not in s: s=s.replace('<div class="topic-grid">','<div class="topic-grid">\n'+card,1)
+    src=source()
+    d=gemini(src) or build_data(src)
+    d["country"]=d.get("country") if d.get("country") in {"usa","uk","france","brazil","australia"} else "usa"
+    d["slug"]=slugify(d.get("slug") or (d.get("brand","restaurant")+"-menu"))
+    d["keyword"]=d.get("keyword") or (d.get("brand","Restaurant")+" menu")
+    d["imageQueries"]=d.get("imageQueries") or [d["keyword"],d.get("brand","restaurant")+" food"]
+    write_agent_preview("Gemini analysis complete — article structure ready. Designing preview…",d,[],False)
+    ims=get_images(d["imageQueries"],d["slug"],max(1,min(int(os.environ.get("MAX_IMAGES","4")),6)))
+    write_agent_preview(f"Images processed: {len(ims)} — menu design is being assembled…",d,ims,False)
+    path=f'{d["country"]}/{d["slug"]}/index.html'
+    p=Path(path);p.parent.mkdir(parents=True,exist_ok=True);p.write_text(render(d,ims),encoding="utf-8")
+    h=Path("index.html");s=h.read_text(encoding="utf-8");href="/"+path.rsplit("/index.html",1)[0]+"/";card=f'<a href="{href}"><strong>🍽️ {esc(d["title"])}</strong><br><small>MenuRadar restaurant/menu guide</small></a>\n'
+    if href not in s:s=s.replace('<div class="topic-grid">','<div class="topic-grid">\n'+card,1)
     h.write_text(s,encoding="utf-8")
-    sm=Path("sitemap.xml"); s=sm.read_text(encoding="utf-8"); url=BASE+"/"+path.rsplit("/index.html",1)[0]+"/"
-    if url not in s: sm.write_text(s.replace("</urlset>",f"  <url><loc>{url}</loc></url>\n</urlset>"),encoding="utf-8")
-    print(json.dumps({"path":path,"images":len(ims),"keyword":d["keyword"],"mode":"free-local-parser"},ensure_ascii=False))
+    sm=Path("sitemap.xml");s=sm.read_text(encoding="utf-8");url=BASE+"/"+path.rsplit("/index.html",1)[0]+"/"
+    if url not in s:sm.write_text(s.replace("</urlset>",f"  <url><loc>{url}</loc></url>\n</urlset>"),encoding="utf-8")
+    write_agent_preview("Published — article, homepage and sitemap updated.",d,ims,True)
+    print(json.dumps({"path":path,"images":len(ims),"keyword":d["keyword"],"mode":"gemini-or-free-local-parser"},ensure_ascii=False))
 
 if __name__=="__main__": main()
