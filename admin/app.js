@@ -100,7 +100,7 @@ function parseImportedContent(raw){
   return {title:title||'Restaurant Menu',intro:intro.join(' '),sections:sections};
 }
 async function importFullContent(){
-  var raw=($('rawContent').value||'').trim();if(!raw){$('importStatus').textContent='Pehle full content paste karo.';return}if(raw.length>120000){$('importStatus').textContent='Content 120,000 characters se zyada hai.';return}
+  var raw=($('rawContent').value||'').trim();if(!raw){$('importStatus').textContent='Pehle full content paste karo.';return}
   $('aiSource').value=raw;var btn=$('parseContent');btn.disabled=true;$('importStatus').textContent='🤖 Content process ho raha hai…';
   try{var ok=await runAI();if(!ok)throw new Error('AI/local processing complete nahi hui.');$('importStatus').textContent='✅ Content structure ho gaya. Ab publish ho raha hai…';var published=await publish();$('importStatus').textContent=published?'✅ Article publish/update ho gaya.':'❌ Publish nahi hua — neeche status check karo.';if(published)$('importStatus').style.color='#16834b'}catch(e){console.error('MenuRadar Paste Full Content:',e);$('importStatus').textContent='⚠️ '+(e.message||String(e));$('importStatus').style.color='#b42318'}finally{btn.disabled=false}
 }
