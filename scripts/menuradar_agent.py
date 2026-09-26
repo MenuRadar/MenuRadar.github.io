@@ -67,12 +67,26 @@ def gemini(src):
     key=os.environ.get("GEMINI_API_KEY","").strip()
     if not key: return None
     prompt="""Return ONLY valid JSON for a restaurant menu article. Keys: brand,location,address,country,slug,keyword,title,metaDescription,intro,sections,relatedQueries,imageQueries. sections contain name,icon,description,items; items contain name,price,note. Preserve source facts, never invent exact prices, and use natural SEO. Country must be usa, uk, france, brazil or australia. Source:\n"""+src
-    url="https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key="+key
-    r=requests.post(url,json={"contents":[{"parts":[{"text":prompt}]}],"generationConfig":{"responseMimeType":"application/json"}},timeout=180)
-    r.raise_for_status()
-    j=r.json(); t=j["candidates"][0]["content"]["parts"][0]["text"]
-    return json.loads(t)
-
+    models=[]
+    preferred=os.environ.get("GEMINI_MODEL","").strip()
+    if preferred: models.append(preferred)
+    models += ["gemini-3.5-flash-lite","gemini-3.5-flash","gemini-2.5-flash"]
+    seen=set()
+    for model in models:
+        if not model or model in seen: continue
+        seen.add(model)
+        try:
+            url="https://generativelanguage.googleapis.com/v1beta/models/"+model+":generateContent?key="+key
+            r=requests.post(url,json={"contents":[{"parts":[{"text":prompt}]}],"generationConfig":{"responseMimeType":"application/json"}},timeout=180)
+            if not r.ok:
+                print("Gemini model",model,"returned",r.status_code,r.text[:300])
+                continue
+            j=r.json(); t=j["candidates"][0]["content"]["parts"][0]["text"]
+            return json.loads(t)
+        except Exception as e:
+            print("Gemini model",model,"failed:",e)
+    print("Gemini unavailable; using free local parser fallback.")
+    return None
 def build_data(src):
     lines=clean_lines(src); blob=" ".join(lines); country=infer_country(blob); brand=""
     for x in lines[:40]:
