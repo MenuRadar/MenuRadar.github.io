@@ -1,3 +1,27 @@
+/* Token gate: the Article Studio stays locked until a GitHub token is verified. */
+(function(){
+  var gate=document.getElementById('loginGate'), studio=document.getElementById('studioShell'), btn=document.getElementById('loginBtn'), input=document.getElementById('loginToken'), status=document.getElementById('loginStatus');
+  function unlock(token){
+    sessionStorage.setItem('menuradar_admin_token',token);
+    var gh=document.getElementById('ghToken'); if(gh) gh.value=token;
+    gate.hidden=true; studio.hidden=false;
+  }
+  async function verify(){
+    var token=input.value.trim();
+    if(!token){status.textContent='Token Key required.';return;}
+    btn.disabled=true; status.textContent='Connecting to GitHub…';
+    try{
+      var r=await fetch('https://api.github.com/user',{headers:{Authorization:'Bearer '+token,Accept:'application/vnd.github+json'}});
+      if(!r.ok) throw new Error('Invalid Token Key or GitHub rejected the token.');
+      var user=await r.json();
+      if(!user || !user.login) throw new Error('GitHub connection could not be verified.');
+      unlock(token); status.textContent='Connected.';
+    }catch(e){status.textContent=e.message||'Connection failed.';sessionStorage.removeItem('menuradar_admin_token');btn.disabled=false;}
+  }
+  btn.onclick=verify; input.onkeydown=function(e){if(e.key==='Enter')verify()};
+  var saved=sessionStorage.getItem('menuradar_admin_token');
+  if(saved){ input.value=saved; verify(); }
+})();
 var $=function(id){return document.getElementById(id)};
 var images=[],sectionCount=0;
 function esc(s){return String(s==null?'':s).replace(/[&<>\"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[c]})}
@@ -17,6 +41,6 @@ async function ghPut(token,repo,path,content,message,sha,branch){var body={messa
 function decodeGitHub(s){return decodeURIComponent(escape(atob(s.replace(/\n/g,''))))}
 function insertHomepageLink(html,d){var href='/'+d.country+'/'+d.slug+'/';if(html.indexOf('href="'+href+'"')>=0)return html;var card='<a href="'+href+'"><strong>🍽️ '+esc(d.brand)+' — '+esc(d.address||d.loc||d.slug)+'</strong><br><small>MenuRadar restaurant/menu guide</small></a>';var marker='<div class="topic-grid">',i=html.indexOf(marker);return i<0?html:html.slice(0,i+marker.length)+'\n'+card+html.slice(i+marker.length)}
 function insertSitemap(xml,d){var loc='https://menuradar.github.io/'+d.country+'/'+d.slug+'/';if(xml.indexOf('<loc>'+loc+'</loc>')>=0)return xml;var entry='  <url><loc>'+loc+'</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>\n';return xml.replace('</urlset>',entry+'</urlset>')}
-async function publish(){try{var key=$('imgKey').value.trim(),token=$('ghToken').value.trim(),repo=$('repo').value.trim(),branch=$('branch').value.trim()||'main',d=articleData();if(!token)throw new Error('Add the GitHub token first.');if(images.length&&!key)throw new Error('Add the image API key first.');if(!d.slug)throw new Error('Add a URL slug.');$('publishBtn').disabled=true;setStatus('Uploading images…');if(images.length)await uploadImages(key);var html=renderArticle(d),path=d.country+'/'+d.slug+'/index.html',existing=null;try{existing=await ghGet(token,repo,path)}catch(e){}await ghPut(token,repo,path,html,'Publish '+d.keyword+' — '+(d.loc||d.slug),existing&&existing.sha,branch);setStatus('Article published. Updating homepage and sitemap…',true);var home=await ghGet(token,repo,'index.html'),oldHome=decodeGitHub(home.content),newHome=insertHomepageLink(oldHome,d);if(newHome!==oldHome)await ghPut(token,repo,'index.html',newHome,'Add article to MenuRadar homepage',home.sha,branch);var sm=await ghGet(token,repo,'sitemap.xml'),oldSm=decodeGitHub(sm.content),newSm=insertSitemap(oldSm,d);if(newSm!==oldSm)await ghPut(token,repo,'sitemap.xml',newSm,'Add article to sitemap',sm.sha,branch);setStatus('Published + homepage + sitemap updated: '+path,true);refreshPreview()}catch(e){setStatus(e.message||String(e));alert(e.message||e)}finally{$('publishBtn').disabled=false}}
+async function publish(){try{var key=$('imgKey').value.trim(),token=sessionStorage.getItem('menuradar_admin_token')||$('ghToken').value.trim(),repo=$('repo').value.trim(),branch=$('branch').value.trim()||'main',d=articleData();if(!token)throw new Error('Add the GitHub token first.');if(images.length&&!key)throw new Error('Add the image API key first.');if(!d.slug)throw new Error('Add a URL slug.');$('publishBtn').disabled=true;setStatus('Uploading images…');if(images.length)await uploadImages(key);var html=renderArticle(d),path=d.country+'/'+d.slug+'/index.html',existing=null;try{existing=await ghGet(token,repo,path)}catch(e){}await ghPut(token,repo,path,html,'Publish '+d.keyword+' — '+(d.loc||d.slug),existing&&existing.sha,branch);setStatus('Article published. Updating homepage and sitemap…',true);var home=await ghGet(token,repo,'index.html'),oldHome=decodeGitHub(home.content),newHome=insertHomepageLink(oldHome,d);if(newHome!==oldHome)await ghPut(token,repo,'index.html',newHome,'Add article to MenuRadar homepage',home.sha,branch);var sm=await ghGet(token,repo,'sitemap.xml'),oldSm=decodeGitHub(sm.content),newSm=insertSitemap(oldSm,d);if(newSm!==oldSm)await ghPut(token,repo,'sitemap.xml',newSm,'Add article to sitemap',sm.sha,branch);setStatus('Published + homepage + sitemap updated: '+path,true);refreshPreview()}catch(e){setStatus(e.message||String(e));alert(e.message||e)}finally{$('publishBtn').disabled=false}}
 $('publishBtn').onclick=publish;$('saveImgKey').onclick=function(){localStorage.setItem('menuradar_img_key',$('imgKey').value.trim());setStatus('Image key saved on this device.',true)};var saved=localStorage.getItem('menuradar_img_key');if(saved)$('imgKey').value=saved;
 addSection({name:'Chicken',icon:'🍗'});addSection({name:'Sides',icon:'🍟'});addSection({name:'Drinks',icon:'🥤'});refreshPreview();
