@@ -54,6 +54,16 @@ def infer_country(src):
     if re.search(r"\b(uk|united kingdom|britain|british|england|gbp|£)\b",s): return "uk"
     return "usa"
 
+def gemini(src):
+    key=os.environ.get("GEMINI_API_KEY","").strip()
+    if not key: return None
+    prompt="""Return ONLY valid JSON for a restaurant menu article. Keys: brand,location,address,country,slug,keyword,title,metaDescription,intro,sections,relatedQueries,imageQueries. sections contain name,icon,description,items; items contain name,price,note. Preserve source facts, never invent exact prices, and use natural SEO. Country must be usa, uk, france, brazil or australia. Source:\n"""+src
+    url="https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key="+key
+    r=requests.post(url,json={"contents":[{"parts":[{"text":prompt}]}],"generationConfig":{"responseMimeType":"application/json"}},timeout=180)
+    r.raise_for_status()
+    j=r.json(); t=j["candidates"][0]["content"]["parts"][0]["text"]
+    return json.loads(t)
+
 def build_data(src):
     lines=clean_lines(src); blob=" ".join(lines); country=infer_country(blob); brand=""
     for x in lines[:40]:
@@ -121,7 +131,7 @@ def render(d,ims):
     return f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{esc(d.get("title"))}</title><meta name="description" content="{esc(d.get("metaDescription"))}"><meta name="robots" content="index,follow"><link rel="canonical" href="{BASE}/{c}/{esc(d.get("slug"))}/"><link rel="stylesheet" href="/styles.css"><style>.menu-hero{{padding:42px 20px;background:linear-gradient(135deg,#111827,#1f2937);color:#fff}}.menu-hero-inner{{max-width:1100px;margin:auto}}.menu-hero h1{{font-size:clamp(32px,5vw,58px);margin:12px 0}}.menu-cover,.article-image{{margin:28px auto;max-width:980px}}.menu-cover img,.article-image img{{display:block;width:100%;max-height:520px;object-fit:cover;border-radius:20px}}.menu-cover figcaption,.article-image figcaption{{font-size:12px;opacity:.7;margin-top:7px}}.menu-section{{max-width:1100px;margin:34px auto;padding:26px;border:1px solid #e5e7eb;border-radius:20px;background:#fff}}.menu-section-head{{display:flex;gap:16px;align-items:flex-start;margin-bottom:18px}}.menu-icon{{font-size:30px}}.menu-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}}.menu-card{{display:flex;justify-content:space-between;gap:15px;padding:18px;border-radius:14px;background:#f8fafc;border:1px solid #e5e7eb}}.menu-card h3{{margin:0 0 5px}}.menu-card p{{margin:0;color:#64748b;font-size:14px}}.menu-card strong{{white-space:nowrap}}</style></head><body><header class="site-header"><a class="logo" href="/">Menu<span>Radar</span></a></header><main><section class="menu-hero"><div class="menu-hero-inner"><p class="eyebrow">{esc(c.upper())} RESTAURANT MENU</p><h1>{esc(d.get("keyword"))}{(" — "+esc(loc)) if loc else ""}</h1><p class="lead">{esc(d.get("intro"))}</p>{cover}</div></section><div class="section"><p>Menu information and prices can vary by location, date and ordering channel. Check the current local menu for final availability and pricing.</p></div>{"".join(secs)}{inside}<section class="section"><h2>Related Menu Searches</h2><ul>{rel}</ul><p><a href="/{c}/">Explore more {c.upper()} restaurant menus →</a></p></section></main><footer><div class="footer-inner"><b>MenuRadar</b><span>Restaurant Menus, Prices & More</span></div></footer></body></html>'''
 
 def main():
-    d=build_data(source()); ims=get_images(d["imageQueries"],d["slug"],max(1,min(int(os.environ.get("MAX_IMAGES","4")),6)))
+    src=source(); d=gemini(src) or build_data(src); d["country"]=d.get("country") if d.get("country") in {"usa","uk","france","brazil","australia"} else "usa"; d["slug"]=slugify(d.get("slug") or (d.get("brand","restaurant")+"-menu")); d["keyword"]=d.get("keyword") or (d.get("brand","Restaurant")+" menu"); d["imageQueries"]=d.get("imageQueries") or [d["keyword"],d.get("brand","restaurant")+" food"]; ims=get_images(d["imageQueries"],d["slug"],max(1,min(int(os.environ.get("MAX_IMAGES","4")),6)))
     path=f'{d["country"]}/{d["slug"]}/index.html'; p=Path(path); p.parent.mkdir(parents=True,exist_ok=True); p.write_text(render(d,ims),encoding="utf-8")
     h=Path("index.html"); s=h.read_text(encoding="utf-8"); href="/"+path.rsplit("/index.html",1)[0]+"/"; card=f'<a href="{href}"><strong>🍽️ {esc(d["title"])}</strong><br><small>MenuRadar restaurant/menu guide</small></a>\n'
     if href not in s: s=s.replace('<div class="topic-grid">','<div class="topic-grid">\n'+card,1)
