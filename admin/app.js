@@ -83,6 +83,13 @@ async function runAI(){
   }catch(e){aiSetStatus(e.message||String(e));alert(e.message||String(e))}
   finally{$('runAI').disabled=false}
 }
+$('useRawForAI').onclick=function(){
+  var raw=($('rawContent').value||'').trim();
+  if(!raw){aiSetStatus('Full Content box mein pehle source paste karo.');return}
+  $('aiSource').value=raw;
+  aiSetStatus('Full Content AI Writer mein copy ho gaya — ab Analyze with AI dabao.',true);
+  $('aiSource').focus();
+};
 $('runAI').onclick=runAI;
 $('clearAI').onclick=function(){$('aiSource').value='';aiSetStatus('Ready for AI analysis.')};
 
