@@ -1,10 +1,9 @@
-name: MenuRadar Autopilot Agent
+name: MenuRadar Free Autopilot
 on:
   workflow_dispatch:
     inputs:
       source: {description: "Full source/article text", required: false, type: string}
       source_url: {description: "Optional source URL", required: false, type: string}
-      model: {description: "OpenAI model", required: false, default: "gpt-5.6-luna", type: string}
       max_images: {description: "Images per article (1-6)", required: false, default: "4", type: string}
 permissions:
   contents: write
@@ -16,18 +15,10 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: "3.12"}
       - run: pip install requests pillow
-      - name: Validate agent secret
+      - name: Run MenuRadar Free Agent
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        run: |
-          if [ -z "$OPENAI_API_KEY" ]; then echo "OPENAI_API_KEY repository secret is missing."; exit 1; fi
-      - name: Run MenuRadar Agent
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
           AGENT_SOURCE: ${{ inputs.source }}
           AGENT_SOURCE_URL: ${{ inputs.source_url }}
-          AI_MODEL: ${{ inputs.model }}
           MAX_IMAGES: ${{ inputs.max_images }}
         run: python scripts/menuradar_agent.py
       - name: Commit generated article and images
@@ -36,5 +27,5 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add index.html sitemap.xml usa/ uk/ france/ brazil/ australia/ assets/agent/ 2>/dev/null || true
           if git diff --cached --quiet; then exit 0; fi
-          git commit -m "🤖 MenuRadar Agent: publish article"
+          git commit -m "🤖 MenuRadar Free Agent: publish article"
           git push
