@@ -141,36 +141,37 @@ function insertSitemap(xml,d){var loc='https://menuradar.github.io/'+d.country+'
 async function publish(){try{var key=$('imgKey').value.trim(),token=sessionStorage.getItem('menuradar_admin_token')||$('ghToken').value.trim(),repo=$('repo').value.trim(),branch=$('branch').value.trim()||'main',d=articleData();if(!token)throw new Error('Add the GitHub token first.');if((images.length||coverImage)&&!key)throw new Error('Add the image API key first.');if(!d.slug)throw new Error('Add a URL slug.');$('publishBtn').disabled=true;setStatus('Uploading images…');if(images.length||coverImage)await uploadImages(key);var html=renderArticle(d),path=editingPath||d.country+'/'+d.slug+'/index.html',existing=null;try{existing=await ghGet(token,repo,path)}catch(e){}await ghPut(token,repo,path,html,'Publish '+d.keyword+' — '+(d.loc||d.slug),existing&&existing.sha,branch);setStatus(editingPath?'Article updated. Updating homepage and sitemap…':'Article published. Updating homepage and sitemap…',true);var home=await ghGet(token,repo,'index.html'),oldHome=decodeGitHub(home.content),newHome=insertHomepageLink(oldHome,d);if(newHome!==oldHome)await ghPut(token,repo,'index.html',newHome,'Add article to MenuRadar homepage',home.sha,branch);var sm=await ghGet(token,repo,'sitemap.xml'),oldSm=decodeGitHub(sm.content),newSm=insertSitemap(oldSm,d);if(newSm!==oldSm)await ghPut(token,repo,'sitemap.xml',newSm,'Add article to sitemap',sm.sha,branch);setStatus((editingPath?'Updated':'Published')+' + homepage + sitemap updated: '+path,true);editingPath='';$('publishBtn').textContent='Upload images & Publish';refreshPreview();loadArticles()}catch(e){setStatus(e.message||String(e));alert(e.message||e)}finally{$('publishBtn').disabled=false}}
 $('publishBtn').onclick=publish;$('saveImgKey').onclick=function(){localStorage.setItem('menuradar_img_key',$('imgKey').value.trim());setStatus('Image key saved on this device.',true)};var saved=localStorage.getItem('menuradar_img_key');if(saved)$('imgKey').value=saved;
 addSection({name:'Chicken',icon:'🍗'});addSection({name:'Sides',icon:'🍟'});addSection({name:'Drinks',icon:'🥤'});refreshPreview();
+async function loadAgentPreview(){
+  var token=sessionStorage.getItem('menuradar_admin_token')||($('ghToken')&&$('ghToken').value.trim());
+  if(!token)return false;
+  try{
+    var r=await fetch('https://api.github.com/repos/MenuRadar/MenuRadar.github.io/contents/admin/agent-preview.json?ref='+encodeURIComponent(($('branch').value||'main').trim()),{headers:{Authorization:'Bearer '+token,Accept:'application/vnd.github+json'}});
+    if(!r.ok)return false;
+    var j=await r.json(),data=JSON.parse(decodeGitHub(j.content)),frame=$('preview');
+    if(data&&data.html&&frame){
+      frame.srcdoc=data.html;
+      if($('agentStatus')){$('agentStatus').textContent='🤖 '+(data.status||'Agent working…')+' · '+(data.updated_at||'');$('agentStatus').style.color='#16834b'}
+      return data.done===true;
+    }
+  }catch(e){}
+  return false;
+}
 async function runAutopilotAgent(){
   var token=sessionStorage.getItem('menuradar_admin_token')||($('ghToken')&&$('ghToken').value.trim()),
-      source=($('agentSource').value||'').trim(),
-      url=($('agentSourceUrl').value||'').trim(),
-      maxImages=($('agentMaxImages').value||'4');
+      source=($('agentSource').value||'').trim(),url=($('agentSourceUrl').value||'').trim(),maxImages=($('agentMaxImages').value||'4');
   if(!token){$('agentStatus').textContent='Pehle Token Key se login karo.';return}
   if(!source&&!url){$('agentStatus').textContent='Source URL do (ya optional source content paste karo).';return}
   if(source.length>60000){$('agentStatus').textContent='Source content 60,000 characters se zyada hai. Source URL use karo.';return}
-  $('runAgent').disabled=true;
-  $('agentStatus').textContent='🚀 Gemini AI Autopilot start ho raha hai…';
-  $('agentStatus').style.color='';
+  $('runAgent').disabled=true;$('agentStatus').textContent='🚀 Agent start ho raha hai…';$('agentStatus').style.color='';
   try{
-    var r=await fetch('https://api.github.com/repos/MenuRadar/MenuRadar.github.io/dispatches',{
-      method:'POST',
-      headers:{Authorization:'Bearer '+token,Accept:'application/vnd.github+json','Content-Type':'application/json'},
-      body:JSON.stringify({event_type:'menuradar_agent',client_payload:{source:source,source_url:url,max_images:maxImages}})
-    });
-    if(!r.ok){
-      var t=await r.text();
-      throw new Error('Agent start failed ('+r.status+'): '+t.slice(0,240));
-    }
-    $('agentStatus').textContent='✅ Agent start ho gaya. Gemini source analyze karega, images process karega, article + homepage + sitemap publish honge. 1–3 minutes lag sakte hain.';
-    $('agentStatus').style.color='#16834b';
-    setTimeout(function(){
-      try{loadArticles()}catch(e){}
-    },15000);
-  }catch(e){
-    $('agentStatus').textContent=e.message||String(e);
-    $('agentStatus').style.color='';
-  }finally{$('runAgent').disabled=false}
+    var r=await fetch('https://api.github.com/repos/MenuRadar/MenuRadar.github.io/dispatches',{method:'POST',headers:{Authorization:'Bearer '+token,Accept:'application/vnd.github+json','Content-Type':'application/json'},body:JSON.stringify({event_type:'menuradar_agent',client_payload:{source:source,source_url:url,max_images:maxImages}})});
+    if(!r.ok)throw new Error('Agent start failed ('+r.status+'): '+(await r.text()).slice(0,240));
+    $('agentStatus').textContent='🧠 Gemini source analyze kar raha hai… Live Preview update hoga.';
+    if(window.agentPreviewTimer)clearInterval(window.agentPreviewTimer);
+    window.agentPreviewTimer=setInterval(async function(){var done=await loadAgentPreview();if(done){clearInterval(window.agentPreviewTimer);window.agentPreviewTimer=null;loadArticles()}},5000);
+  }catch(e){$('agentStatus').textContent=e.message||String(e);$('agentStatus').style.color=''}
+  finally{$('runAgent').disabled=false}
 }
+
 $('runAgent').onclick=runAutopilotAgent;
 $('agentFromAI').onclick=function(){var s=($('aiSource').value||'').trim();if(!s){$('agentStatus').textContent='AI Source box empty hai.';return}$('agentSource').value=s;$('agentStatus').textContent='AI Source Autopilot mein copy ho gaya.';$('agentSource').focus()};
