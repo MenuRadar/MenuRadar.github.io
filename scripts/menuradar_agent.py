@@ -50,7 +50,7 @@ def clean_lines(src):
     out=[]
     skip={"menu","home","login","search","order now","skip to content","privacy policy","terms"}
     for raw in src.splitlines():
-        x=re.sub(r"[ \\t]+"," ",raw).strip()
+        x=re.sub(r"[ \t]+"," ",raw).strip()
         if not x: continue
         if x.lower() in skip: continue
         out.append(x)
