@@ -1,26 +1,30 @@
-/* Token gate: the Article Studio stays locked until a GitHub token is verified. */
+/* Token gate: verify the same repository permission required for publishing. */
 (function(){
   var gate=document.getElementById('loginGate'), studio=document.getElementById('studioShell'), btn=document.getElementById('loginBtn'), input=document.getElementById('loginToken'), status=document.getElementById('loginStatus');
-  function unlock(token){
-    sessionStorage.setItem('menuradar_admin_token',token);
-    var gh=document.getElementById('ghToken'); if(gh) gh.value=token;
-    gate.hidden=true; studio.hidden=false;
-  }
   async function verify(){
-    var token=input.value.trim();
+    var token=(input.value||'').trim();
     if(!token){status.textContent='Token Key required.';return;}
-    btn.disabled=true; status.textContent='Connecting to GitHub…';
+    btn.disabled=true; status.textContent='Checking Token Key…';
     try{
-      var r=await fetch('https://api.github.com/user',{headers:{Authorization:'Bearer '+token,Accept:'application/vnd.github+json'}});
-      if(!r.ok) throw new Error('Invalid Token Key or GitHub rejected the token.');
-      var user=await r.json();
-      if(!user || !user.login) throw new Error('GitHub connection could not be verified.');
-      unlock(token); status.textContent='Connected.';
-    }catch(e){status.textContent=e.message||'Connection failed.';sessionStorage.removeItem('menuradar_admin_token');btn.disabled=false;}
+      var r=await fetch('https://api.github.com/repos/MenuRadar/MenuRadar.github.io',{method:'GET',headers:{Authorization:'Bearer '+token,Accept:'application/vnd.github+json'}});
+      if(r.status===401) throw new Error('Token Key invalid or expired.');
+      if(r.status===403) throw new Error('Token valid hai lekin repository access/permission nahi hai.');
+      if(r.status===404) throw new Error('Token ko MenuRadar repository ka access nahi mila.');
+      if(!r.ok) throw new Error('GitHub connection failed ('+r.status+').');
+      var repo=await r.json();
+      if(!repo || repo.full_name!=='MenuRadar/MenuRadar.github.io') throw new Error('Wrong repository access.');
+      sessionStorage.setItem('menuradar_admin_token',token);
+      var gh=document.getElementById('ghToken'); if(gh) gh.value=token;
+      gate.hidden=true; studio.hidden=false;
+    }catch(e){
+      sessionStorage.removeItem('menuradar_admin_token');
+      status.textContent=e.message||'Connection failed. Token Key check nahi ho saki.';
+    }finally{btn.disabled=false;}
   }
-  btn.onclick=verify; input.onkeydown=function(e){if(e.key==='Enter')verify()};
+  btn.onclick=function(e){e.preventDefault();verify()};
+  input.onkeydown=function(e){if(e.key==='Enter'){e.preventDefault();verify()}};
   var saved=sessionStorage.getItem('menuradar_admin_token');
-  if(saved){ input.value=saved; verify(); }
+  if(saved){input.value=saved;verify();}
 })();
 var $=function(id){return document.getElementById(id)};
 var images=[],sectionCount=0;
