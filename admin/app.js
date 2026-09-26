@@ -37,7 +37,52 @@ function setStatus(s,good){$('status').textContent=s;$('status').style.color=goo
 function addSection(d){d=d||{};sectionCount++;var el=document.createElement('div');el.className='section-editor';el.innerHTML='<div class="section-top"><label>Section name<input class="s-name" value="'+esc(d.name||'Chicken')+'"></label><label>Icon<input class="s-icon" value="'+esc(d.icon||'🍗')+'"></label><label>Description<input class="s-desc" value="'+esc(d.desc||'Menu options and reference pricing for this section.')+'"></label><button class="remove-section">Remove</button></div><div class="items"></div><button class="add-item">+ Add item</button>';$('sections').appendChild(el);(d.items||[{name:'',price:''}]).forEach(function(x){addItem(el,x)});el.querySelector('.add-item').onclick=function(){addItem(el)};el.querySelector('.remove-section').onclick=function(){el.remove()}}
 function addItem(section,d){d=d||{};var row=document.createElement('div');row.className='item-row';row.innerHTML='<input class="i-name" placeholder="Item name" value="'+esc(d.name||'')+'"><input class="i-price" placeholder="Price / reference" value="'+esc(d.price||'')+'"><input class="i-note" placeholder="Short note (optional)" value="'+esc(d.note||'')+'"><button>×</button>';section.querySelector('.items').appendChild(row);row.querySelector('button').onclick=function(){row.remove()}}
 function articleData(){var brand=$('brand').value.trim()||'Restaurant',loc=$('location').value.trim(),address=$('address').value.trim(),keyword=$('keyword').value.trim()||brand+' Menu',slug=$('slug').value.trim()||slugify(brand+'-'+address),country=$('country').value.trim()||'usa';var sections=[].slice.call(document.querySelectorAll('.section-editor')).map(function(s){return{name:s.querySelector('.s-name').value.trim(),icon:s.querySelector('.s-icon').value.trim(),desc:s.querySelector('.s-desc').value.trim(),items:[].slice.call(s.querySelectorAll('.item-row')).map(function(r){return{name:r.querySelector('.i-name').value.trim(),price:r.querySelector('.i-price').value.trim(),note:r.querySelector('.i-note').value.trim()}}).filter(function(x){return x.name})}}).filter(function(x){return x.name});var title=$('metaTitle').value.trim()||keyword+' & Prices '+(loc?'— '+loc:'')+' | MenuRadar';var desc=$('metaDescription').value.trim()||keyword+' '+(loc?'for '+loc:'')+' with menu categories, popular items and reference pricing. Prices and availability may vary by restaurant and ordering channel.';var links=$('links').value.split('\n').map(function(x){return x.trim()}).filter(Boolean).map(function(x){var a=x.split('|');return{href:a.shift().trim(),text:(a.join('|')||x).trim()}});return{brand:brand,loc:loc,address:address,keyword:keyword,slug:slug,country:country,intro:$('intro').value.trim(),sections:sections,title:title,desc:desc,links:links}}
-$('addSection').onclick=function(){addSection()};$('refreshArticles').onclick=loadArticles;$('articleSearch').oninput=renderArticleList;$('articleCountry').onchange=renderArticleList;
+
+function cleanImportText(s){return String(s||'').replace(/\\r/g,'').trim()}
+function parsePriceText(s){var m=String(s||'').match(/(?:\\$|£|€|R\\$)\\s?\\d+(?:[.,]\\d{1,2})?(?:\\s?[-–]\\s?(?:\\$|£|€|R\\$)?\\s?\\d+(?:[.,]\\d{1,2})?)?/);return m?m[0]:''}
+function parseImportedContent(raw){
+  raw=cleanImportText(raw);if(!raw)throw new Error('Pehle content paste karo.');
+  var lines=raw.split(/\\n/).map(function(x){return x.trim()}).filter(Boolean), title='',intro=[],sections=[],current=null;
+  function looksHeading(s){return /^(#{1,6}\\s+|(?:menu|popular|breakfast|lunch|dinner|chicken|sandwich|burgers?|sides?|drinks?|desserts?|beverages?|meals?|combos?|snacks?|salads?|pizza|pasta|coffee|tea|kids?|value|specials?|appetizers?|entrees?|main courses?|prices?|menu items?)(?:\\s|$))/i.test(s)}
+  function addSection(name){current={name:name.replace(/^#{1,6}\\s+/,'').replace(/:$/,''),icon:'🍽️',desc:'Menu options and reference pricing.',items:[]};sections.push(current)}
+  function addItem(line){
+    var clean=line.replace(/^[-*•]+\\s*/,'').replace(/^\\d+[.)]\\s*/,'').trim(), price=parsePriceText(clean), name=price?clean.replace(price,'').replace(/\\s*[-–—:|]\\s*$/,'').trim():clean;
+    if(name.length>1){if(!current)addSection('Menu');current.items.push({name:name,price:price,note:''})}
+  }
+  title=lines[0].replace(/^#{1,6}\\s+/,'').trim();
+  for(var i=1;i<lines.length;i++){
+    var line=lines[i];
+    if(/^#{1,6}\\s+/.test(line)){addSection(line);continue}
+    if(/^(?:={3,}|-{3,})$/.test(line))continue;
+    if(looksHeading(line)&&line.length<70&&!/[.!?]{2,}/.test(line)){addSection(line);continue}
+    if(/^[-*•]+\\s+/.test(line)||/\\s(?:[-–—|:])\\s*(?:\\$|£|€|R\\$)?\\d/.test(line)||parsePriceText(line)){
+      addItem(line);continue
+    }
+    if(current&&current.items.length===0)current.desc=(current.desc==='Menu options and reference pricing.'?line:current.desc+' '+line);
+    else if(!current)intro.push(line);
+    else if(current.items.length===0)current.desc+=' '+line;
+  }
+  if(!sections.length)addSection('Menu');
+  sections=sections.filter(function(s){return s.items.length||s.name});
+  return {title:title||'Restaurant Menu',intro:intro.join(' '),sections:sections};
+}
+function importFullContent(){
+  try{
+    var raw=$('rawContent').value.trim(),p=parseImportedContent(raw),title=p.title;
+    $('brand').value=title.replace(/\\s+(menu|menus).*$/i,'').trim()||$('brand').value;
+    $('keyword').value=title;
+    $('intro').value=p.intro||'This guide organizes the menu by category with reference pricing and popular choices.';
+    $('metaTitle').value=title+' & Prices | MenuRadar';
+    $('metaDescription').value=title+' with menu categories, popular items and reference pricing. Prices and availability may vary by location and ordering channel.';
+    $('sections').innerHTML='';sectionCount=0;
+    p.sections.forEach(function(s){addSection(s)});
+    refreshPreview();
+    $('importStatus').textContent='Content read, structured and designed. Ab preview check karke publish karo.';
+    $('importStatus').style.color='#16834b';
+    window.scrollTo({top:document.querySelector('.panel:nth-of-type(4)').offsetTop,behavior:'smooth'});
+  }catch(e){$('importStatus').textContent=e.message||String(e);$('importStatus').style.color=''}
+}
+$('parseContent').onclick=importFullContent;$('clearContent').onclick=function(){$('rawContent').value='';$('importStatus').textContent='Paste content and let Article Studio structure it.'};$('addSection').onclick=function(){addSection()};$('refreshArticles').onclick=loadArticles;$('articleSearch').oninput=renderArticleList;$('articleCountry').onchange=renderArticleList;
 $('coverImage').onchange=function(e){var file=e.target.files&&e.target.files[0];if(!file)return;var id=crypto.randomUUID(),reader=new FileReader();reader.onload=function(){coverImage={id:id,file:file,data:reader.result,url:'',alt:$('keyword').value.trim()||'restaurant menu cover',caption:''};renderCover()};reader.readAsDataURL(file)};document.querySelector('.cover-box').onclick=function(){ $('coverImage').click() };document.querySelector('.upload-box:not(.cover-box)').onclick=function(){ $('images').click() };$('images').onchange=function(e){[].slice.call(e.target.files).forEach(function(file){var id=crypto.randomUUID(),reader=new FileReader();reader.onload=function(){images.push({id:id,file:file,data:reader.result,url:'',alt:'',caption:''});renderImages()};reader.readAsDataURL(file)})};
 function renderCover(){var box=$('coverPreview');if(!box)return;if(!coverImage){box.innerHTML='<div class="cover-empty">No cover image selected.</div>';return}box.innerHTML='<div class="cover-card"><img src="'+(coverImage.url||coverImage.data)+'" alt=""><div class="body"><label>Cover alt text<input id="coverAlt" value="'+esc(coverImage.alt||$('keyword').value||'restaurant menu cover')+'"></label><button class="remove" id="removeCover">Remove cover</button></div></div>';$('coverAlt').oninput=function(){if(coverImage)coverImage.alt=this.value};$('removeCover').onclick=function(){coverImage=null;$('coverImage').value='';renderCover()}}function renderImages(){$('imageList').innerHTML=images.map(function(im){return '<div class="image-card"><img src="'+(im.url||im.data)+'" alt=""><div class="body"><label>Alt text<input data-img="'+im.id+'" data-field="alt" value="'+esc(im.alt||$('keyword').value||'restaurant menu')+'"></label><label>Caption<input data-img="'+im.id+'" data-field="caption" value="'+esc(im.caption||'MenuRadar restaurant menu image')+'"></label><button class="remove" data-remove="'+im.id+'">Remove</button></div></div>'}).join('');[].slice.call(document.querySelectorAll('[data-field]')).forEach(function(x){x.oninput=function(){var im=images.find(function(a){return a.id===x.dataset.img});if(im)im[x.dataset.field]=x.value}});[].slice.call(document.querySelectorAll('[data-remove]')).forEach(function(x){x.onclick=function(){images=images.filter(function(a){return a.id!==x.dataset.remove});renderImages()}})}
 async function uploadOneImage(key,im){if(im.url)return;var fd=new FormData();fd.append('key',key);fd.append('image',im.file);var r=await fetch('https://api.imgbb.com/1/upload',{method:'POST',body:fd}),j=await r.json();if(!j.success)throw new Error('Image upload failed: '+((j.error&&j.error.message)||'ImgBB error'));im.url=j.data.display_url;im.deleteUrl=j.data.delete_url}async function uploadImages(key){if(coverImage&&!coverImage.url){await uploadOneImage(key,coverImage);setStatus('Cover image uploaded.',true)}for(var i=0;i<images.length;i++){var im=images[i];if(im.url)continue;var fd=new FormData();fd.append('key',key);fd.append('image',im.file);var r=await fetch('https://api.imgbb.com/1/upload',{method:'POST',body:fd}),j=await r.json();if(!j.success)throw new Error('Image upload failed: '+((j.error&&j.error.message)||'ImgBB error'));im.url=j.data.display_url;im.deleteUrl=j.data.delete_url;setStatus('Uploaded image '+(i+1)+' of '+images.length+'…',true)}}
