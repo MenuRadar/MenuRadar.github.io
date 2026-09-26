@@ -51,7 +51,6 @@ function aiPrompt(source){
 async function runAI(){
   var key=($('geminiKey').value||sessionStorage.getItem('menuradar_gemini_key')||'').trim(),source=($('aiSource').value||'').trim(),preferred=($('aiModel').value||'').trim();
   if(!source){aiSetStatus('Pehle source content paste karo.');return false}
-  if(source.length>120000){aiSetStatus('Source bohat lamba hai. Pehle isay thora shorten karo.');return false}
   if(!key){var fallbackNoKey=parseImportedContent(source);fillFromImportedFallback(fallbackNoKey);aiSetStatus('Gemini key nahi mili — local MenuRadar parser se article structure ready kar diya.',true);return true}
   $('geminiKey').value=key;sessionStorage.setItem('menuradar_gemini_key',key);sessionStorage.setItem('menuradar_gemini_model',preferred||'gemini-2.5-flash');$('runAI').disabled=true;aiSetStatus('Gemini AI source analyze kar raha hai…');
   try{
