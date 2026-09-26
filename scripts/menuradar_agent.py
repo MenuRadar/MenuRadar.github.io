@@ -57,15 +57,15 @@ def clean_lines(src):
     return out
 
 def price(text):
-    m=re.search(r"(?:(?:\\$|£|€|R\\$)\\s*\\d+(?:\\.\\d{1,2})?|\\d+(?:\\.\\d{1,2})?\\s*(?:USD|GBP|EUR|BRL|AUD))",text,re.I)
+    m=re.search(r"(?:(?:[$£€]|R[$])\s*\d+(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?\s*(?:USD|GBP|EUR|BRL|AUD))",text,re.I)
     return m.group(0) if m else ""
 
 def infer_country(src):
     s=src.lower()
-    if re.search(r"\\b(brazil|brasil|brl|r\\$)\\b",s): return "brazil"
-    if re.search(r"\\b(france|french|eur|€)\\b",s): return "france"
-    if re.search(r"\\b(australia|australian|aud)\\b",s): return "australia"
-    if re.search(r"\\b(uk|united kingdom|britain|british|england|gbp|£)\\b",s): return "uk"
+    if re.search(r"\b(brazil|brasil|brl|r[$])\b",s): return "brazil"
+    if re.search(r"\b(france|french|eur|€)\b",s): return "france"
+    if re.search(r"\b(australia|australian|aud)\b",s): return "australia"
+    if re.search(r"\b(uk|united kingdom|britain|british|england|gbp|£)\b",s): return "uk"
     return "usa"
 
 def gemini(src):
@@ -142,13 +142,13 @@ def exact_sections(lines):
 def build_data(src):
     lines=clean_lines(src); blob=" ".join(lines); country=infer_country(blob); brand=""
     for x in lines[:80]:
-        m=re.search(r"\\b(kfc|mcdonald'?s|burger king|starbucks|subway|wendy'?s|taco bell|pizza hut|domino'?s|chipotle|popeyes)\\b",x,re.I)
+        m=re.search(r"\b(kfc|mcdonald'?s|burger king|starbucks|subway|wendy'?s|taco bell|pizza hut|domino'?s|chipotle|popeyes)\b",x,re.I)
         if m: brand=m.group(0).replace("’","'"); break
-    if not brand and lines: brand=re.sub(r"\\s+(menu|prices?|& prices?).*$","",lines[0],flags=re.I).strip()
+    if not brand and lines: brand=re.sub(r"\s+(menu|prices?|& prices?).*$","",lines[0],flags=re.I).strip()
     brand=brand or "Restaurant"
     loc=""
     for x in lines[:100]:
-        if len(x)<140 and re.search(r",|\\b(?:road|rd|street|st|avenue|ave|drive|dr|lane|ln|boulevard|blvd)\\b",x,re.I) and x.lower()!=brand.lower():
+        if len(x)<140 and re.search(r",|\b(?:road|rd|street|st|avenue|ave|drive|dr|lane|ln|boulevard|blvd)\b",x,re.I) and x.lower()!=brand.lower():
             loc=x; break
     keyword=(brand+" menu").strip(); slug=slugify(keyword)
     sections=exact_sections(lines)
