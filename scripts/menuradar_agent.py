@@ -42,7 +42,7 @@ def source():
         p=TextParser(); p.feed(r.text)
         s+="\n"+(p.title or "")+"\n"+"\n".join(p.parts)
     if not s: raise RuntimeError("Source text or URL required")
-    return re.sub(r"[ \t]+"," ",s)[:300000]
+    return re.sub(r"[ \t]+"," ",s)
 
 def clean_lines(src):
     out=[]
