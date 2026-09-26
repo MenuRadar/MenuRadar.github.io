@@ -23,7 +23,7 @@ def get_images(queries,slug,n):
  # Pexels when configured; otherwise use Openverse's public image index.
  if not k:
   for q in queries[:n*2]:
-   try:r=requests.get("https://api.openverse.org/v1/images/",params={"q":q,"page_size":5},headers={"User-Agent":"MenuRadar-Agent/1.0"},timeout=45)
+   try:r=requests.get("https://api.openverse.org/v1/images/",params={"q":q,"page_size":5,"license":"cc0,by,by-sa,pdm"},headers={"User-Agent":"MenuRadar-Agent/1.0"},timeout=45)
    except:continue
    if not r.ok:continue
    for p in r.json().get("results",[]):
@@ -34,7 +34,7 @@ def get_images(queries,slug,n):
      if ratio>target:nw=int(h*target);x=(w-nw)//2;im=im.crop((x,0,x+nw,h))
      elif ratio<target:nh=int(w/target);y=(h-nh)//2;im=im.crop((0,y,w,y+nh))
      im.thumbnail((1400,788),Image.Resampling.LANCZOS);path=Path("assets/agent")/slug/f"{len(out)+1}.webp";path.parent.mkdir(parents=True,exist_ok=True);im.save(path,"WEBP",quality=84)
-     out.append({"path":"/"+str(path).replace("\\","/"),"alt":q+" menu photo","caption":"Photo via Openverse"});break
+     out.append({"path":"/"+str(path).replace("\\","/"),"alt":q+" menu photo","caption":("Photo by "+str(p.get("creator") or "Openverse contributor")+" via Openverse — "+str(p.get("license") or "open license"))});break
     except:continue
    if len(out)>=n:break
   return out
@@ -48,7 +48,7 @@ def get_images(queries,slug,n):
     if ratio>target:nw=int(h*target);x=(w-nw)//2;im=im.crop((x,0,x+nw,h))
     elif ratio<target:nh=int(w/target);y=(h-nh)//2;im=im.crop((0,y,w,y+nh))
     im.thumbnail((1400,788),Image.Resampling.LANCZOS);path=Path("assets/agent")/slug/f"{len(out)+1}.webp";path.parent.mkdir(parents=True,exist_ok=True);im.save(path,"WEBP",quality=84)
-    out.append({"path":"/"+str(path).replace("\\","/"),"alt":q+" menu photo","caption":"Photo via Pexels"});break
+    out.append({"path":"/"+str(path).replace("\\","/"),"alt":q+" menu photo","caption":("Photo by "+str(p.get("photographer") or "Pexels contributor")+" via Pexels")});break
    except:continue
   if len(out)>=n:break
  return out
