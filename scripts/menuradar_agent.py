@@ -19,8 +19,25 @@ def ai(src,model):
  return json.loads(t)
 def get_images(queries,slug,n):
  k=os.environ.get("PEXELS_API_KEY","").strip()
- if not k:return []
  out=[]
+ # Pexels when configured; otherwise use Openverse's public image index.
+ if not k:
+  for q in queries[:n*2]:
+   try:r=requests.get("https://api.openverse.org/v1/images/",params={"q":q,"page_size":5},headers={"User-Agent":"MenuRadar-Agent/1.0"},timeout=45)
+   except:continue
+   if not r.ok:continue
+   for p in r.json().get("results",[]):
+    src=p.get("thumbnail") or p.get("url")
+    if not src:continue
+    try:
+     raw=requests.get(src,timeout=45).content;im=Image.open(BytesIO(raw)).convert("RGB");w,h=im.size;target=16/9;ratio=w/h
+     if ratio>target:nw=int(h*target);x=(w-nw)//2;im=im.crop((x,0,x+nw,h))
+     elif ratio<target:nh=int(w/target);y=(h-nh)//2;im=im.crop((0,y,w,y+nh))
+     im.thumbnail((1400,788),Image.Resampling.LANCZOS);path=Path("assets/agent")/slug/f"{len(out)+1}.webp";path.parent.mkdir(parents=True,exist_ok=True);im.save(path,"WEBP",quality=84)
+     out.append({"path":"/"+str(path).replace("\\","/"),"alt":q+" menu photo","caption":"Photo via Openverse"});break
+    except:continue
+   if len(out)>=n:break
+  return out
  for q in queries[:n*2]:
   try:r=requests.get("https://api.pexels.com/v1/search",headers={"Authorization":k},params={"query":q,"per_page":5,"orientation":"landscape"},timeout=45)
   except:continue
