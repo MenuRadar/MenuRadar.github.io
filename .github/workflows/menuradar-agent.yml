@@ -1,10 +1,8 @@
 name: MenuRadar Free Autopilot
 on:
   workflow_dispatch:
-    inputs:
-      source: {description: "Full source/article text", required: false, type: string}
-      source_url: {description: "Optional source URL", required: false, type: string}
-      max_images: {description: "Images per article (1-6)", required: false, default: "4", type: string}
+  repository_dispatch:
+    types: [menuradar_agent]
 permissions:
   contents: write
 jobs:
@@ -18,9 +16,9 @@ jobs:
       - name: Run MenuRadar Free Agent
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          AGENT_SOURCE: ${{ inputs.source }}
-          AGENT_SOURCE_URL: ${{ inputs.source_url }}
-          MAX_IMAGES: ${{ inputs.max_images }}
+          AGENT_SOURCE: ${{ github.event.client_payload.source || inputs.source }}
+          AGENT_SOURCE_URL: ${{ github.event.client_payload.source_url || inputs.source_url }}
+          MAX_IMAGES: ${{ github.event.client_payload.max_images || inputs.max_images || '4' }}
         run: python scripts/menuradar_agent.py
       - name: Commit generated article and images
         run: |
