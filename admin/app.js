@@ -54,15 +54,15 @@ async function runAI(){
   if(!key){var fallbackNoKey=parseImportedContent(source);fillFromImportedFallback(fallbackNoKey);aiSetStatus('Gemini key nahi mili — local MenuRadar parser se article structure ready kar diya.',true);return true}
   $('geminiKey').value=key;sessionStorage.setItem('menuradar_gemini_key',key);sessionStorage.setItem('menuradar_gemini_model',preferred||'gemini-2.5-flash');$('runAI').disabled=true;aiSetStatus('Gemini AI source analyze kar raha hai…');
   try{
-    var models=[];if(preferred)models.push(preferred);['gemini-2.5-flash','gemini-2.5-flash-lite','gemini-2.0-flash','gemini-1.5-flash'].forEach(function(m){if(models.indexOf(m)<0)models.push(m)});var lastError='';
-    for(var mi=0;mi<models.length;mi++){var model=models[mi],url='https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(model)+':generateContent',controller=new AbortController(),timer=setTimeout(function(){controller.abort()},18000);
+    var models=[];if(preferred)models.push(preferred);['gemini-3.8-flash','gemini-3.7-flash','gemini-3.6-flash','gemini-3.5-flash-lite','gemini-2.5-flash-lite','gemini-2.5-flash'].forEach(function(m){if(models.indexOf(m)<0)models.push(m)});var lastError='';
+    for(var mi=0;mi<models.length;mi++){var model=models[mi],url='https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(model)+':generateContent',controller=new AbortController(),timer=setTimeout(function(){controller.abort()},60000);
       try{
-        var r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':key},body:JSON.stringify({contents:[{parts:[{text:aiPrompt(source)}]}],generationConfig:{responseMimeType:'application/json',temperature:0.2}}),signal:controller.signal});clearTimeout(timer);
+        var r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':key},body:JSON.stringify({contents:[{parts:[{text:aiPrompt(source)}]}],generationConfig:{responseMimeType:'application/json',temperature:0.1,maxOutputTokens:65536}}),signal:controller.signal});clearTimeout(timer);
         var raw=await r.text(),j={};try{j=JSON.parse(raw)}catch(e){}if(!r.ok){lastError=(j.error&&j.error.message)||('Gemini request failed ('+r.status+').');continue}
         var text=extractAIText(j).trim(),data;try{data=JSON.parse(text)}catch(e){lastError='Gemini ne valid JSON return nahi kiya.';continue}if(!data||!data.keyword){lastError='Gemini output incomplete hai.';continue}
         $('brand').value=data.brand||$('brand').value;$('location').value=data.location||'';$('address').value=data.address||'';$('country').value=data.country||'usa';$('slug').value=data.slug||slugify((data.brand||'restaurant')+'-'+(data.location||'menu'));$('keyword').value=data.keyword;$('metaTitle').value=data.title||data.keyword+' & Prices | MenuRadar';$('metaDescription').value=data.metaDescription||data.keyword+' menu, popular items and reference pricing. Prices and availability may vary by location and ordering channel.';$('intro').value=data.intro||'Explore the menu by category with reference pricing and popular choices.';$('links').value=(data.internalLinks||[]).map(function(x){return (x.href||'')+'|'+(x.text||x.href||'')}).filter(Boolean).join('\n');
         $('sections').innerHTML='';sectionCount=0;(data.sections||[]).forEach(function(sec){addSection({name:sec.name||'Menu',icon:sec.icon||'🍽️',desc:sec.description||'Menu options and reference pricing.',items:(sec.items||[]).map(function(item){return{name:item.name||'',price:item.price||'',note:item.note||''}})})});if(!document.querySelector('.section-editor'))addSection({name:'Menu',icon:'🍽️'});refreshPreview();aiSetStatus('Gemini '+model+' analysis complete — article fields, SEO and menu sections filled.',true);return true;
-      }catch(err){clearTimeout(timer);lastError=err.name==='AbortError'?'Gemini request timeout (18s).':(err.message||String(err));continue}
+      }catch(err){clearTimeout(timer);lastError=err.name==='AbortError'?'Gemini request timeout (60s).':(err.message||String(err));continue}
     }
     var fallback=parseImportedContent(source);fillFromImportedFallback(fallback);aiSetStatus('Gemini unavailable — local MenuRadar parser se structure complete kar diya. '+(lastError||''),true);return true;
   }catch(e){aiSetStatus(e.message||String(e));return false}finally{$('runAI').disabled=false}
@@ -74,38 +74,107 @@ function cleanImportText(s){return String(s||'').replace(/\\r/g,'').trim()}
 function parsePriceText(s){var m=String(s||'').match(/(?:\\$|£|€|R\\$)\\s?\\d+(?:[.,]\\d{1,2})?(?:\\s?[-–]\\s?(?:\\$|£|€|R\\$)?\\s?\\d+(?:[.,]\\d{1,2})?)?/);return m?m[0]:''}
 function parseImportedContent(raw){
   raw=cleanImportText(raw);if(!raw)throw new Error('Pehle content paste karo.');
-  var lines=raw.split(/\\n/).map(function(x){return x.trim()}).filter(Boolean), title='',intro=[],sections=[],current=null;
-  function looksHeading(s){return /^(#{1,6}\\s+|(?:menu|popular|breakfast|lunch|dinner|chicken|sandwich|burgers?|sides?|drinks?|desserts?|beverages?|meals?|combos?|snacks?|salads?|pizza|pasta|coffee|tea|kids?|value|specials?|appetizers?|entrees?|main courses?|prices?|menu items?)(?:\\s|$))/i.test(s)}
-  function addSection(name){current={name:name.replace(/^#{1,6}\\s+/,'').replace(/:$/,''),icon:'🍽️',desc:'Menu options and reference pricing.',items:[]};sections.push(current)}
-  function addItem(line){
-    var clean=line.replace(/^[-*•]+\\s*/,'').replace(/^\\d+[.)]\\s*/,'').trim(), price=parsePriceText(clean), name=price?clean.replace(price,'').replace(/\\s*[-–—:|]\\s*$/,'').trim():clean;
-    if(name.length>1){if(!current)addSection('Menu');current.items.push({name:name,price:price,note:''})}
+  var lines=raw.split(/\n/).map(function(x){return x.replace(/\s+/g,' ').trim()}).filter(Boolean);
+  var title=(lines[0]||'Restaurant Menu').replace(/^#{1,6}\s+/,'').trim(),intro=[],sections=[],current=null,pending='';
+  var headingWords=/^(?:menu|full menu|popular items?|breakfast|brunch|lunch|dinner|chicken|sandwiches?|burgers?|sides?|drinks?|beverages?|desserts?|sweets?|meals?|combos?|snacks?|salads?|pizza|pasta|coffee|tea|kids?|value|specials?|offers?|appetizers?|entrees?|main courses?|prices?|menu items?|wraps?|tenders?|bowls?|cakes?|cookies?|shakes?|ice cream|cold drinks?|hot drinks?|sauces?|family meals?|deals?|featured items?|make it a meal|bebidas|complementos|postres|pollo|hamburguesas|acompañamientos|bebidas)$/i;
+  function addSection(name){
+    name=String(name||'Menu').replace(/^#{1,6}\s+/,'').replace(/^[-•*]+\s*/,'').replace(/:$/,'').trim();
+    if(!name)return;
+    current={name:name,icon:iconForSection(name),desc:'Menu options and reference pricing.',items:[]};
+    sections.push(current);
   }
-  title=lines[0].replace(/^#{1,6}\\s+/,'').trim();
+  function iconForSection(name){
+    var n=String(name).toLowerCase();
+    if(/breakfast|brunch/.test(n))return '🍳';
+    if(/chicken|pollo|tender/.test(n))return '🍗';
+    if(/burger|hamburg/.test(n))return '🍔';
+    if(/sandwich|wrap/.test(n))return '🥪';
+    if(/side|acompañ|complement/.test(n))return '🍟';
+    if(/drink|beverage|bebida|coffee|tea/.test(n))return '🥤';
+    if(/dessert|sweet|postre|cake|cookie|shake|ice cream/.test(n))return '🍰';
+    if(/pizza|pasta/.test(n))return '🍕';
+    if(/salad/.test(n))return '🥗';
+    if(/deal|offer|value|special/.test(n))return '🏷️';
+    if(/kids/.test(n))return '🧒';
+    if(/sauce/.test(n))return '🥫';
+    if(/bowl/.test(n))return '🍲';
+    return '🍽️';
+  }
+  function addItem(name,price,note){
+    name=String(name||'').replace(/^[-•*]+\s*/,'').replace(/^\d+[.)]\s*/,'').trim();
+    if(!name||name.length<2)return;
+    if(!current)addSection('Menu');
+    current.items.push({name:name,price:String(price||'').trim(),note:String(note||'').trim()});
+  }
+  function priceFrom(s){
+    var m=String(s||'').match(/(?:\$|£|€|R\$)\s*\d+(?:[.,]\d{1,2})?(?:\s*(?:USD|GBP|EUR|BRL|AUD))?|\d+(?:[.,]\d{1,2})\s*(?:USD|GBP|EUR|BRL|AUD)/i);
+    return m?m[0]:'';
+  }
+  function looksHeading(line){
+    var x=line.replace(/^#{1,6}\s+/,'').replace(/:$/,'').trim();
+    return /^#{1,6}\s+/.test(line)||headingWords.test(x)||(/^[A-Z][A-Za-z&'’\s-]{2,48}$/.test(x)&&!/[.!?]/.test(x));
+  }
   for(var i=1;i<lines.length;i++){
     var line=lines[i];
-    if(/^#{1,6}\\s+/.test(line)){addSection(line);continue}
-    if(/^(?:={3,}|-{3,})$/.test(line))continue;
-    if(looksHeading(line)&&line.length<70&&!/[.!?]{2,}/.test(line)){addSection(line);continue}
-    if(/^[-*•]+\\s+/.test(line)||/\\s(?:[-–—|:])\\s*(?:\\$|£|€|R\\$)?\\d/.test(line)||parsePriceText(line)){
-      addItem(line);continue
+    if(/^#{1,6}\s+/.test(line)||looksHeading(line)&&line.length<70){
+      if(current&&current.items.length===0&&current.desc==='Menu options and reference pricing.')current.desc=line;
+      else addSection(line);
+      continue;
     }
-    if(current&&current.items.length===0)current.desc=(current.desc==='Menu options and reference pricing.'?line:current.desc+' '+line);
-    else if(!current)intro.push(line);
-    else if(current.items.length===0)current.desc+=' '+line;
+    if(/^(?:={3,}|-{3,})$/.test(line))continue;
+    var p=priceFrom(line);
+    if(p){
+      var name=line.replace(p,'').replace(/\s*[-–—:|]\s*$/,'').trim();
+      if(name.length>=2){addItem(name,p);pending='';continue}
+      if(pending){addItem(pending,p);pending='';continue}
+    }
+    if(/^[-•*]\s+/.test(line)){
+      var bullet=line.replace(/^[-•*]\s+/,'').trim(),bp=priceFrom(bullet);
+      if(bp){addItem(bullet.replace(bp,'').replace(/\s*[-–—:|]\s*$/,'').trim(),bp);pending='';}
+      else pending=bullet;
+      continue;
+    }
+    if(!current){intro.push(line);continue}
+    if(current.items.length===0){
+      if(current.desc==='Menu options and reference pricing.')current.desc=line;
+      else current.desc+=' '+line;
+    }else if(line.length<180&&pending){
+      pending+=' '+line;
+    }else if(line.length<180&&current.items.length){
+      var last=current.items[current.items.length-1];
+      if(!last.note&&/[.!?]/.test(line))last.note=line;
+    }
+  }
+  if(pending){
+    var pp=priceFrom(pending);
+    if(pp)addItem(pending.replace(pp,'').trim(),pp);
   }
   if(!sections.length)addSection('Menu');
-  sections=sections.filter(function(s){return s.items.length||s.name});
-  return {title:title||'Restaurant Menu',intro:intro.join(' '),sections:sections};
+  sections=sections.filter(function(x){return x.items.length>0});
+  if(!sections.length){
+    var fallback=[];lines.slice(1).forEach(function(x){var p=priceFrom(x);if(p)fallback.push({name:x.replace(p,'').trim(),price:p,note:''})});
+    sections=[{name:'Menu',icon:'🍽️',desc:'Menu options and reference pricing.',items:fallback}];
+  }
+  return {title:title||'Restaurant Menu',intro:intro.slice(0,8).join(' '),sections:sections};
 }
 async function importFullContent(){
-  var raw=($('rawContent').value||'').trim();if(!raw){$('importStatus').textContent='Pehle full content paste karo.';return}
-  $('aiSource').value=raw;var btn=$('parseContent');btn.disabled=true;$('importStatus').textContent='🤖 Content process ho raha hai…';
-  try{var ok=await runAI();if(!ok)throw new Error('AI/local processing complete nahi hui.');$('importStatus').textContent='✅ Content structure ho gaya. Ab publish ho raha hai…';var published=await publish();$('importStatus').textContent=published?'✅ Article publish/update ho gaya.':'❌ Publish nahi hua — neeche status check karo.';if(published)$('importStatus').style.color='#16834b'}catch(e){console.error('MenuRadar Paste Full Content:',e);$('importStatus').textContent='⚠️ '+(e.message||String(e));$('importStatus').style.color='#b42318'}finally{btn.disabled=false}
+  var raw=($('rawContent').value||'').trim();
+  if(!raw){$('importStatus').textContent='Pehle full content paste karo.';return}
+  var btn=$('parseContent');btn.disabled=true;$('importStatus').textContent='📖 Full content read ho raha hai…';
+  try{
+    var parsed=parseImportedContent(raw);
+    fillFromImportedFallback(parsed);
+    var count=parsed.sections.reduce(function(n,s){return n+s.items.length},0);
+    $('importStatus').textContent='✅ '+count+' menu items read ho gaye. Design ready — ab publish ho raha hai…';
+    var published=await publish();
+    $('importStatus').textContent=published?'✅ Full content article publish/update ho gaya.':'❌ Publish nahi hua — status check karo.';
+    if(published)$('importStatus').style.color='#16834b';
+  }catch(e){
+    console.error('MenuRadar Paste Full Content:',e);
+    $('importStatus').textContent='⚠️ '+(e.message||String(e));$('importStatus').style.color='#b42318';
+  }finally{btn.disabled=false}
 }
-$('parseContent').onclick=importFullContent;$('parseContent').onclick=importFullContent;
-$('addSection').onclick=function(){addSection()};$('refreshArticles').onclick=loadArticles;$('articleSearch').oninput=renderArticleList;$('articleCountry').onchange=renderArticleList;
-$('coverImage').onchange=function(e){var file=e.target.files&&e.target.files[0];if(!file)return;var id=crypto.randomUUID(),reader=new FileReader();reader.onload=function(){coverImage={id:id,file:file,data:reader.result,url:'',alt:$('keyword').value.trim()||'restaurant menu cover',caption:''};renderCover()};reader.readAsDataURL(file)};document.querySelector('.cover-box').onclick=function(){ $('coverImage').click() };document.querySelector('.upload-box:not(.cover-box)').onclick=function(){ $('images').click() };$('images').onchange=function(e){[].slice.call(e.target.files).forEach(function(file){var id=crypto.randomUUID(),reader=new FileReader();reader.onload=function(){images.push({id:id,file:file,data:reader.result,url:'',alt:'',caption:''});renderImages()};reader.readAsDataURL(file)})};
+$('parseContent').onclick=importFullContent;
 function renderCover(){var box=$('coverPreview');if(!box)return;if(!coverImage){box.innerHTML='<div class="cover-empty">No cover image selected.</div>';return}box.innerHTML='<div class="cover-card"><img src="'+(coverImage.url||coverImage.data)+'" alt=""><div class="body"><label>Cover alt text<input id="coverAlt" value="'+esc(coverImage.alt||$('keyword').value||'restaurant menu cover')+'"></label><button class="remove" id="removeCover">Remove cover</button></div></div>';$('coverAlt').oninput=function(){if(coverImage)coverImage.alt=this.value};$('removeCover').onclick=function(){coverImage=null;$('coverImage').value='';renderCover()}}function renderImages(){$('imageList').innerHTML=images.map(function(im){return '<div class="image-card"><img src="'+(im.url||im.data)+'" alt=""><div class="body"><label>Alt text<input data-img="'+im.id+'" data-field="alt" value="'+esc(im.alt||$('keyword').value||'restaurant menu')+'"></label><label>Caption<input data-img="'+im.id+'" data-field="caption" value="'+esc(im.caption||'MenuRadar restaurant menu image')+'"></label><button class="remove" data-remove="'+im.id+'">Remove</button></div></div>'}).join('');[].slice.call(document.querySelectorAll('[data-field]')).forEach(function(x){x.oninput=function(){var im=images.find(function(a){return a.id===x.dataset.img});if(im)im[x.dataset.field]=x.value}});[].slice.call(document.querySelectorAll('[data-remove]')).forEach(function(x){x.onclick=function(){images=images.filter(function(a){return a.id!==x.dataset.remove});renderImages()}})}
 async function uploadOneImage(key,im){if(im.url)return;var fd=new FormData();fd.append('key',key);fd.append('image',im.file);var r=await fetch('https://api.imgbb.com/1/upload',{method:'POST',body:fd}),j=await r.json();if(!j.success)throw new Error('Image upload failed: '+((j.error&&j.error.message)||'ImgBB error'));im.url=j.data.display_url;im.deleteUrl=j.data.delete_url}async function uploadImages(key){if(coverImage&&!coverImage.url){await uploadOneImage(key,coverImage);setStatus('Cover image uploaded.',true)}for(var i=0;i<images.length;i++){var im=images[i];if(im.url)continue;var fd=new FormData();fd.append('key',key);fd.append('image',im.file);var r=await fetch('https://api.imgbb.com/1/upload',{method:'POST',body:fd}),j=await r.json();if(!j.success)throw new Error('Image upload failed: '+((j.error&&j.error.message)||'ImgBB error'));im.url=j.data.display_url;im.deleteUrl=j.data.delete_url;setStatus('Uploaded image '+(i+1)+' of '+images.length+'…',true)}}
 function renderArticle(d){var coverHtml=coverImage&&coverImage.url?'<figure class="menu-cover"><img src="'+esc(coverImage.url)+'" alt="'+esc(coverImage.alt||d.keyword)+'" loading="eager" width="1200" height="800"></figure>':'';var imageHtml=images.filter(function(x){return x.url}).map(function(x){return '<figure class="article-image"><img src="'+esc(x.url)+'" alt="'+esc(x.alt||d.keyword)+'" loading="lazy" width="1200" height="800"><figcaption>'+esc(x.caption||'')+'</figcaption></figure>'}).join('');var sections=d.sections.map(function(s){var items=s.items.map(function(i){return '<article class="menu-card"><div class="menu-card-top"><h3>'+esc(i.name)+'</h3><span class="menu-price">'+esc(i.price||'Reference')+'</span></div>'+(i.note?'<p>'+esc(i.note)+'</p>':'')+'</article>'}).join('');return '<section class="menu-section"><div class="menu-section-head"><div class="menu-section-title"><span class="category-icon">'+esc(s.icon)+'</span><div><h2>'+esc(s.name)+'</h2><p>'+esc(s.desc)+'</p></div></div><p>'+s.items.length+' listed</p></div><div class="menu-grid">'+items+'</div></section>'}).join('');var links=d.links.length?d.links.map(function(l){return '<a href="'+esc(l.href)+'">'+esc(l.text)+'</a>'}).join(''):'<a href="/">MenuRadar Home</a>';var imgCss=((coverImage&&coverImage.url)||images.some(function(x){return x.url}))?'.menu-cover{margin:0 0 24px;border-radius:20px;overflow:hidden;background:#fff;border:1px solid #e5e7eb}.menu-cover img{display:block;width:100%;height:auto;max-height:620px;object-fit:cover}.article-image{margin:22px 0;border-radius:18px;overflow:hidden;background:#fff;border:1px solid #e5e7eb}.article-image img{display:block;width:100%;height:auto;max-height:620px;object-fit:cover}.article-image figcaption{padding:10px 14px;color:#667085;font-size:13px}':'';return '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+esc(d.title)+'</title><meta name="description" content="'+esc(d.desc)+'"><meta name="robots" content="index,follow"><link rel="canonical" href="https://menuradar.github.io/'+esc(d.country)+'/'+esc(d.slug)+'/"><link rel="stylesheet" href="/styles.css"><style>'+imgCss+'</style></head><body><header class="site-header"><a class="logo" href="/">Menu<span>Radar</span></a></header><section class="menu-hero"><div class="menu-hero-inner">'+coverHtml+'<p class="eyebrow">'+esc(d.brand)+' MENU • MENURADAR</p><h1>'+esc(d.keyword)+(d.loc?' — '+esc(d.loc):'')+'</h1><p class="lead">'+esc(d.intro||d.desc)+'</p></div></section><main class="menu-layout"><div class="menu-main">'+imageHtml+'<div class="menu-notice"><span>📍</span><div><b>'+esc(d.address||d.loc||d.brand)+'</b><span>Menu information is provided as reference content. Availability and prices can vary by restaurant, market and ordering channel.</span></div></div>'+sections+'<section class="section seo-coverage"><h2>'+esc(d.keyword)+' &amp; Prices</h2><p>Looking for the '+esc(d.keyword)+(d.loc?' in '+esc(d.loc):'')+'? This guide organizes the menu by category so visitors can quickly compare choices, popular items and reference pricing.</p><p>The '+esc(d.keyword)+' can change by location and ordering channel. Check the restaurant or delivery checkout for final availability and pricing.</p><div class="related">'+links+'</div></section></div></main><footer><div class="footer-inner"><b>MenuRadar</b><span>Restaurant Menus, Prices &amp; More</span><div><a href="/privacy.html">Privacy</a><a href="/about.html">About</a></div></div></footer></body></html>'}
