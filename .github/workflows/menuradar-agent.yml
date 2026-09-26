@@ -17,6 +17,7 @@ jobs:
       - run: pip install requests pillow
       - name: Run MenuRadar Free Agent
         env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           AGENT_SOURCE: ${{ inputs.source }}
           AGENT_SOURCE_URL: ${{ inputs.source_url }}
           MAX_IMAGES: ${{ inputs.max_images }}
