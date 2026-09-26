@@ -38,6 +38,54 @@ function addSection(d){d=d||{};sectionCount++;var el=document.createElement('div
 function addItem(section,d){d=d||{};var row=document.createElement('div');row.className='item-row';row.innerHTML='<input class="i-name" placeholder="Item name" value="'+esc(d.name||'')+'"><input class="i-price" placeholder="Price / reference" value="'+esc(d.price||'')+'"><input class="i-note" placeholder="Short note (optional)" value="'+esc(d.note||'')+'"><button>×</button>';section.querySelector('.items').appendChild(row);row.querySelector('button').onclick=function(){row.remove()}}
 function articleData(){var brand=$('brand').value.trim()||'Restaurant',loc=$('location').value.trim(),address=$('address').value.trim(),keyword=$('keyword').value.trim()||brand+' Menu',slug=$('slug').value.trim()||slugify(brand+'-'+address),country=$('country').value.trim()||'usa';var sections=[].slice.call(document.querySelectorAll('.section-editor')).map(function(s){return{name:s.querySelector('.s-name').value.trim(),icon:s.querySelector('.s-icon').value.trim(),desc:s.querySelector('.s-desc').value.trim(),items:[].slice.call(s.querySelectorAll('.item-row')).map(function(r){return{name:r.querySelector('.i-name').value.trim(),price:r.querySelector('.i-price').value.trim(),note:r.querySelector('.i-note').value.trim()}}).filter(function(x){return x.name})}}).filter(function(x){return x.name});var title=$('metaTitle').value.trim()||keyword+' & Prices '+(loc?'— '+loc:'')+' | MenuRadar';var desc=$('metaDescription').value.trim()||keyword+' '+(loc?'for '+loc:'')+' with menu categories, popular items and reference pricing. Prices and availability may vary by restaurant and ordering channel.';var links=$('links').value.split('\n').map(function(x){return x.trim()}).filter(Boolean).map(function(x){var a=x.split('|');return{href:a.shift().trim(),text:(a.join('|')||x).trim()}});return{brand:brand,loc:loc,address:address,keyword:keyword,slug:slug,country:country,intro:$('intro').value.trim(),sections:sections,title:title,desc:desc,links:links}}
 
+
+function aiSetStatus(s,good){var el=$('aiStatus');if(!el)return;el.textContent=s;el.style.color=good?'#16834b':''}
+function extractAIText(r){
+  if(r.output_text)return r.output_text;
+  var out=r.output||[],parts=[];
+  out.forEach(function(x){(x.content||[]).forEach(function(c){if(c.type==='output_text'&&c.text)parts.push(c.text)})});
+  return parts.join('');
+}
+function aiPrompt(source){
+  return 'You are MenuRadar Article AI. Transform the supplied source into structured restaurant-menu article data. Preserve factual menu item names, prices and location information from the source; never invent exact prices. If a price is absent, use an empty string. Rewrite prose into original, useful wording rather than copying long passages. Create natural SEO coverage without keyword stuffing. Return ONLY valid JSON matching this shape: {"brand":"","location":"","address":"","country":"usa|uk|france|brazil|australia","slug":"","keyword":"","title":"","metaDescription":"","intro":"","sections":[{"name":"","icon":"","description":"","items":[{"name":"","price":"","note":""}]}],"internalLinks":[{"href":"","text":""}],"imageAlt":"","imageCaption":""}. Use an empty array when data is unavailable. Keep section icons as emoji. Country should be inferred only when supported by the source; otherwise use usa. Source:\n\n'+source;
+}
+async function runAI(){
+  var key=($('openaiKey').value||'').trim(),source=($('aiSource').value||'').trim(),model=($('aiModel').value||'gpt-5.6-luna').trim();
+  if(!key){aiSetStatus('OpenAI API key add karo.');return}
+  if(!source){aiSetStatus('Pehle source content paste karo.');return}
+  if(source.length>120000){aiSetStatus('Source bohat lamba hai. Pehle isay thora shorten karo.');return}
+  $('runAI').disabled=true;aiSetStatus('AI source analyze kar raha hai…');
+  try{
+    var r=await fetch('https://api.openai.com/v1/responses',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},body:JSON.stringify({
+      model:model,input:aiPrompt(source),store:false,
+      text:{format:{type:'json_object'}}
+    })});
+    var raw=await r.text(),j={};try{j=JSON.parse(raw)}catch(e){}
+    if(!r.ok)throw new Error((j.error&&j.error.message)||'OpenAI request failed ('+r.status+').');
+    var text=extractAIText(j).trim(),data;try{data=JSON.parse(text)}catch(e){throw new Error('AI ne valid JSON return nahi kiya.')}
+    if(!data||!data.keyword)throw new Error('AI output incomplete hai.');
+    $('brand').value=data.brand||$('brand').value;
+    $('location').value=data.location||'';
+    $('address').value=data.address||'';
+    $('country').value=data.country||'usa';
+    $('slug').value=data.slug||slugify((data.brand||'restaurant')+'-'+(data.location||'menu'));
+    $('keyword').value=data.keyword;
+    $('metaTitle').value=data.title||data.keyword+' & Prices | MenuRadar';
+    $('metaDescription').value=data.metaDescription||data.keyword+' menu, popular items and reference pricing. Prices and availability may vary by location and ordering channel.';
+    $('intro').value=data.intro||'Explore the menu by category with reference pricing and popular choices.';
+    $('links').value=(data.internalLinks||[]).map(function(x){return (x.href||'')+'|'+(x.text||x.href||'')}).filter(Boolean).join('\n');
+    $('sections').innerHTML='';sectionCount=0;
+    (data.sections||[]).forEach(function(s){addSection({name:s.name||'Menu',icon:s.icon||'🍽️',desc:s.description||'Menu options and reference pricing.',items:(s.items||[]).map(function(i){return{name:i.name||'',price:i.price||'',note:i.note||''}})})});
+    if(!document.querySelector('.section-editor'))addSection({name:'Menu',icon:'🍽️'});
+    refreshPreview();
+    aiSetStatus('AI analysis complete — article fields, SEO and menu sections filled. Preview check karo.',true);
+    document.querySelector('.preview-panel').scrollIntoView({behavior:'smooth',block:'start'});
+  }catch(e){aiSetStatus(e.message||String(e));alert(e.message||String(e))}
+  finally{$('runAI').disabled=false}
+}
+$('runAI').onclick=runAI;
+$('clearAI').onclick=function(){$('aiSource').value='';aiSetStatus('Ready for AI analysis.')};
+
 function cleanImportText(s){return String(s||'').replace(/\\r/g,'').trim()}
 function parsePriceText(s){var m=String(s||'').match(/(?:\\$|£|€|R\\$)\\s?\\d+(?:[.,]\\d{1,2})?(?:\\s?[-–]\\s?(?:\\$|£|€|R\\$)?\\s?\\d+(?:[.,]\\d{1,2})?)?/);return m?m[0]:''}
 function parseImportedContent(raw){
