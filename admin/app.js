@@ -141,20 +141,31 @@ function parseImportedContent(raw){
   return {title:title||'Restaurant Menu',intro:intro.join(' '),sections:sections};
 }
 async function importFullContent(){
-  var raw=$('rawContent').value.trim();
+  var raw=($('rawContent').value||'').trim();
   if(!raw){$('importStatus').textContent='Pehle full content paste karo.';return}
   var key=($('geminiKey').value||sessionStorage.getItem('menuradar_gemini_key')||'').trim();
-  if(!key){$('importStatus').textContent='Gemini API key add karo — key sirf is session mein save hogi.';$('geminiKey').focus();return}
+  if(!key){$('importStatus').textContent='Gemini API key add karo.';$('geminiKey').focus();return}
   $('geminiKey').value=key;sessionStorage.setItem('menuradar_gemini_key',key);
-  if(raw.length>120000){$('importStatus').textContent='Content 120,000 characters se zyada hai. Isay parts mein process karo.';return}
+  if(raw.length>120000){$('importStatus').textContent='Content 120,000 characters se zyada hai.';return}
   $('aiSource').value=raw;
-  $('importStatus').textContent='🤖 AI content ko read, clean, structure aur SEO optimize kar raha hai…';$('importStatus').style.color='';
-  var ok=await runAI();
-  if(!ok){$('importStatus').textContent='❌ AI processing fail hui — article publish nahi kiya gaya.';return}
-  $('importStatus').textContent='✅ AI processing complete. Ab article publish ho raha hai…';
-  var published=await publish();
-  $('importStatus').textContent=published?'✅ AI se clean/structure karke article publish/update ho gaya.':'❌ Article publish nahi hua. Upar status mein error check karo.';
-  if(published)$('importStatus').style.color='#16834b';
+  var btn=$('parseContent');btn.disabled=true;
+  $('importStatus').textContent='🤖 Content process ho raha hai…';
+  try{
+    var ok=await Promise.race([
+      runAI(),
+      new Promise(function(_,reject){setTimeout(function(){reject(new Error('AI request timeout — local parser se continue kar raha hoon.'))},30000)})
+    ]);
+    if(!ok)throw new Error('AI processing complete nahi hui.');
+    $('importStatus').textContent='✅ Content structure ho gaya. Ab publish ho raha hai…';
+    var published=await publish();
+    $('importStatus').textContent=published?'✅ Article publish/update ho gaya.':'❌ Publish nahi hua — neeche status check karo.';
+    if(published)$('importStatus').style.color='#16834b';
+  }catch(e){
+    console.error('MenuRadar Paste Full Content:',e);
+    $('importStatus').textContent='⚠️ '+(e.message||String(e));
+    $('importStatus').style.color='#b42318';
+    alert(e.message||String(e));
+  }finally{btn.disabled=false}
 }
 $('parseContent').onclick=importFullContent;$('parseContent').onclick=importFullContent;
 $('addSection').onclick=function(){addSection()};$('refreshArticles').onclick=loadArticles;$('articleSearch').oninput=renderArticleList;$('articleCountry').onchange=renderArticleList;
