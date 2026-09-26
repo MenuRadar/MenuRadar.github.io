@@ -94,7 +94,7 @@ async function runAI(){
   }catch(e){aiSetStatus(e.message||String(e));alert(e.message||String(e));return false}
   finally{$('runAI').disabled=false}
 }
-function cleanImportTextfunction cleanImportText(s){return String(s||'').replace(/\\r/g,'').trim()}
+function cleanImportText(s){return String(s||'').replace(/\\r/g,'').trim()}
 function parsePriceText(s){var m=String(s||'').match(/(?:\\$|£|€|R\\$)\\s?\\d+(?:[.,]\\d{1,2})?(?:\\s?[-–]\\s?(?:\\$|£|€|R\\$)?\\s?\\d+(?:[.,]\\d{1,2})?)?/);return m?m[0]:''}
 function parseImportedContent(raw){
   raw=cleanImportText(raw);if(!raw)throw new Error('Pehle content paste karo.');
