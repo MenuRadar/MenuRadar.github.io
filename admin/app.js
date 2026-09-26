@@ -15,7 +15,7 @@
       if(!repo || repo.full_name!=='MenuRadar/MenuRadar.github.io') throw new Error('Wrong repository access.');
       sessionStorage.setItem('menuradar_admin_token',token);
       var gh=document.getElementById('ghToken'); if(gh) gh.value=token;
-      gate.hidden=true; studio.hidden=false;
+      gate.hidden=true; studio.hidden=false; if(typeof loadArticles==='function') loadArticles();
     }catch(e){
       sessionStorage.removeItem('menuradar_admin_token');
       status.textContent=e.message||'Connection failed. Token Key check nahi ho saki.';
