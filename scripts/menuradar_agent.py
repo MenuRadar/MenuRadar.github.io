@@ -12,14 +12,19 @@ def slugify(s): return re.sub(r"[^a-z0-9]+","-",str(s or "").lower()).strip("-")
 
 class TextParser(HTMLParser):
     def __init__(self):
-        super().__init__(); self.parts=[]; self.title=""; self.in_title=False
+        super().__init__(); self.parts=[]; self.title=""; self.in_title=False; self.ignored=0
     def handle_starttag(self,tag,attrs):
+        if tag in ("script","style","noscript","template"): self.ignored+=1; return
         if tag=="title": self.in_title=True
         if tag in ("p","div","li","h1","h2","h3","h4","tr","section","article","br","header","main","footer","nav","aside"): self.parts.append("\n")
     def handle_endtag(self,tag):
+        if tag in ("script","style","noscript","template"):
+            if self.ignored: self.ignored-=1
+            return
         if tag=="title": self.in_title=False
         if tag in ("p","div","li","h1","h2","h3","h4","tr","section","article","header","main","footer","nav","aside"): self.parts.append("\n")
     def handle_data(self,data):
+        if self.ignored: return
         t=data.strip()
         if t:
             self.parts.append(t)
