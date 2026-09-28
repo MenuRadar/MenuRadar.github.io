@@ -61,6 +61,7 @@ def clean_lines(src):
         x=re.sub(r"[ \t]+"," ",raw).strip()
         if not x: continue
         if x.lower() in skip: continue
+        if x.startswith("self.__next_f.push") or x.startswith("window.__") or x.startswith("(()=>") or x.startswith("(function("): continue
         out.append(x)
     return out
 
@@ -68,7 +69,10 @@ def price(text):
     m=re.search(r"(?:(?:[$£€]|R[$])\s*\d+(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?\s*(?:USD|GBP|EUR|BRL|AUD))",text,re.I)
     return m.group(0) if m else ""
 
-def infer_country(src):
+def infer_country(src,url=""):
+    u=(url or "").lower()
+    for marker,country in [("/france/","france"),("/uk/","uk"),("/brazil/","brazil"),("/australia/","australia"),("/us/","usa"),("/usa/","usa")]:
+        if marker in u: return country
     s=src.lower()
     if re.search(r"\b(brazil|brasil|brl|r[$])\b",s): return "brazil"
     if re.search(r"\b(france|french|eur|€)\b",s): return "france"
@@ -147,8 +151,8 @@ def exact_sections(lines):
     # Do not drop sections; every meaningful source line remains represented.
     return [s for s in sections if s.get("items") or s.get("source_lines")]
 
-def build_data(src):
-    lines=clean_lines(src); blob=" ".join(lines); country=infer_country(blob); brand=""
+def build_data(src,source_url=""):
+    lines=clean_lines(src); blob=" ".join(lines); country=infer_country(blob,source_url); brand=""
     for x in lines[:160]:
         m=re.search(r"\b(kfc|mcdonald'?s|burger king|starbucks|subway|wendy'?s|taco bell|pizza hut|domino'?s|chipotle|popeyes)\b",x,re.I)
         if m: brand=m.group(0).replace("’","'"); break
@@ -208,7 +212,7 @@ def render(d,ims):
     rel=d.get("relatedQueries") or [brand+" menu",brand+" menu prices",brand+" popular menu items"]
     rel_html=''.join('<a href="/'+c+'/">'+esc(x)+'</a>' for x in rel[:6] if x)
     cover=pics[0] if pics else ""; inside=''.join(pics[1:])
-    facts_html=''.join('<div class="fact"><b>'+esc(a)+'</b><span>'+esc(b)+'</span></div>' for a,b in [("Restaurant",brand),("Location",loc or "United States"),("Address",address or "Location varies")])
+    facts_html=''.join('<div class="fact"><b>'+esc(a)+'</b><span>'+esc(b)+'</span></div>' for a,b in [("Restaurant",brand),("Location",loc or {"usa":"United States","uk":"United Kingdom","france":"France","brazil":"Brazil","australia":"Australia"}.get(c,"Location varies")),("Address",address or "Location varies")])
     source_link=('<a class="source-link" href="'+esc(source_url)+'" target="_blank" rel="nofollow noopener">View original menu source ↗</a>' if source_url else "")
     notice='<div class="menu-notice"><span>ℹ️</span><div><b>Source-faithful menu</b><span>The menu wording and listed source lines are preserved. Prices and availability can still vary by location, date and ordering channel.</span></div>'+source_link+'</div>'
     faq='<section class="section faq"><h2>About '+esc(brand)+' menu prices</h2><details><summary>Do '+esc(brand)+' menu prices vary by location?</summary><p>Yes. Prices and availability can vary by restaurant location, ordering channel and date.</p></details><details><summary>How was this menu page created?</summary><p>The supplied source was read and its menu lines were preserved; MenuRadar changes the presentation, not the source wording.</p></details></section>'
@@ -218,7 +222,8 @@ def main():
     heartbeat={"brand":"MenuRadar AI Autopilot","keyword":"Reading source…","title":"MenuRadar AI Autopilot — Processing","metaDescription":"Reading the supplied restaurant menu source line by line.","intro":"Source received. MenuRadar is preserving the supplied wording and organizing it into a readable menu design.","country":"usa","slug":"agent-processing","sections":[],"relatedQueries":[]}
     write_agent_preview("📖 Source read started — preserving menu wording line by line…",heartbeat,[],False)
     src=source()
-    local=build_data(src)
+    source_url=os.environ.get("AGENT_SOURCE_URL","").strip()
+    local=build_data(src,source_url)
     # Do not block publishing on Gemini. Source extraction is deterministic and complete.
     # Gemini is optional metadata enrichment only and is intentionally skipped in the
     # publishing path so a slow/expired API request can never leave Autopilot hanging.
