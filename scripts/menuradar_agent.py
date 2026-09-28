@@ -15,10 +15,10 @@ class TextParser(HTMLParser):
         super().__init__(); self.parts=[]; self.title=""; self.in_title=False
     def handle_starttag(self,tag,attrs):
         if tag=="title": self.in_title=True
-        if tag in ("p","div","li","h1","h2","h3","h4","tr","td","th","section","article","br"): self.parts.append("\n")
+        if tag in ("p","div","li","h1","h2","h3","h4","tr","section","article","br","header","main","footer","nav","aside"): self.parts.append("\n")
     def handle_endtag(self,tag):
         if tag=="title": self.in_title=False
-        if tag in ("p","div","li","h1","h2","h3","h4","tr","td","th","section","article"): self.parts.append("\n")
+        if tag in ("p","div","li","h1","h2","h3","h4","tr","section","article","header","main","footer","nav","aside"): self.parts.append("\n")
     def handle_data(self,data):
         t=data.strip()
         if t:
@@ -42,7 +42,8 @@ def source():
         p=TextParser(); p.feed(r.text)
         s+="\n"+(p.title or "")+"\n"+"\n".join(p.parts)
     if not s: raise RuntimeError("Source text or URL required")
-    return re.sub(r"[ \t]+"," ",s)
+    # Preserve source line boundaries; collapse spaces/tabs only inside each line.
+    return "\n".join(re.sub(r"[ \t]+"," ",line).strip() for line in s.splitlines() if line.strip())
 
 def clean_lines(src):
     # Keep the source wording intact. Only normalize repeated whitespace and remove
@@ -82,7 +83,7 @@ Source:
     models=[]
     preferred=os.environ.get("GEMINI_MODEL","").strip()
     if preferred: models.append(preferred)
-    models += ["gemini-3.8-flash","gemini-3.7-flash","gemini-3.6-flash","gemini-3.5-flash-lite","gemini-2.5-flash-lite","gemini-2.5-flash"]
+    models += ["gemini-2.5-flash","gemini-2.5-flash-lite","gemini-2.0-flash","gemini-2.0-flash-lite"]
     seen=set()
     for model in models:
         if not model or model in seen: continue
@@ -123,13 +124,13 @@ def exact_sections(lines):
             new_section(x); used.add(idx); continue
         if price(x):
             if current is None: new_section("Menu")
+            # Attach immediately preceding non-heading lines to the item, preserving
+            # their exact source wording. This handles item-name / description / price
+            # layouts where the price is on its own line.
             item_lines=pending[:] if pending else [x]
-            if pending:
-                pending=[]
-            item={"name":item_lines[0], "price":price(x), "note":"", "source_lines":item_lines}
-            if x not in item_lines: item["source_lines"].append(x)
-            elif len(item_lines)==1 and item_lines[0]!=x: item["source_lines"].append(x)
-            # If the price is on a separate line, keep it exactly as a source line too.
+            pending=[]
+            name=item_lines[0] if item_lines else x
+            item={"name":name, "price":price(x), "note":"", "source_lines":item_lines}
             if x not in item["source_lines"]: item["source_lines"].append(x)
             current["items"].append(item); used.add(idx); continue
         pending.append(x)
@@ -141,13 +142,13 @@ def exact_sections(lines):
 
 def build_data(src):
     lines=clean_lines(src); blob=" ".join(lines); country=infer_country(blob); brand=""
-    for x in lines[:80]:
+    for x in lines[:160]:
         m=re.search(r"\b(kfc|mcdonald'?s|burger king|starbucks|subway|wendy'?s|taco bell|pizza hut|domino'?s|chipotle|popeyes)\b",x,re.I)
         if m: brand=m.group(0).replace("’","'"); break
     if not brand and lines: brand=re.sub(r"\s+(menu|prices?|& prices?).*$","",lines[0],flags=re.I).strip()
     brand=brand or "Restaurant"
     loc=""
-    for x in lines[:100]:
+    for x in lines[:200]:
         if len(x)<140 and re.search(r",|\b(?:road|rd|street|st|avenue|ave|drive|dr|lane|ln|boulevard|blvd)\b",x,re.I) and x.lower()!=brand.lower():
             loc=x; break
     keyword=(brand+" menu").strip(); slug=slugify(keyword)
