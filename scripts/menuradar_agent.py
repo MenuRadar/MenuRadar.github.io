@@ -166,7 +166,7 @@ def exact_sections(lines):
             pending=[]
             non_price=[z for z in recent if not price(z)]
             name=non_price[-1] if non_price else x
-            if name.lower() in {"save","avg. item price","updated weekly"}: continue
+            # Never turn a price-only line or scraped UI icon/label into a menu item.\n            if name.strip()==x.strip() and (re.fullmatch(r"[£€$R]?\\s*\\d+(?:[.,]\\d{1,2})?\\s*(?:USD|GBP|EUR|BRL|AUD)?", name, re.I) or re.fullmatch(r"[🛍️🏷️🔔⭐️]+", name)):\n                continue\n            if name.lower() in {"save","avg. item price","updated weekly","alert","alerts"}: continue
             item={"name":name,"price":p,"note":"","source_lines":recent or [x]}
             if x not in item["source_lines"]: item["source_lines"].append(x)
             current["items"].append(item)
