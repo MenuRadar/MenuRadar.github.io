@@ -32,7 +32,9 @@ def write_agent_preview(status, data, ims=None, done=False):
     payload["updated_at"]=__import__("datetime").datetime.utcnow().isoformat()+"Z"
     payload["html"]=render(payload, ims or [])
     Path("admin/agent-preview.json").write_text(json.dumps(payload,ensure_ascii=False),encoding="utf-8")
-    os.system("git add admin/agent-preview.json && git config user.name 'MenuRadar Agent' && git config user.email '41898282+github-actions[bot]@users.noreply.github.com' && git commit -m '🤖 MenuRadar Agent live preview' >/dev/null 2>&1 && git push origin HEAD:main >/dev/null 2>&1 || true")
+    # Preview is committed once by the workflow after the agent finishes.
+    # Do not push from inside the Python process; concurrent pushes can race with
+    # the workflow's final commit and leave the admin UI showing stale state.
 
 def source():
     s=os.environ.get("AGENT_SOURCE","").strip()
