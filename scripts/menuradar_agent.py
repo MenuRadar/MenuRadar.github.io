@@ -20,7 +20,7 @@ class TextParser(HTMLParser):
         if tag in ("h2","h3","h4"):
             self.heading_tag=tag
             self.parts.append("\n__MR_SECTION_HEADING__")
-        if tag in ("p","div","li","h1","h2","h3","h4","tr","section","article","br","header","main","footer","nav","aside"): self.parts.append("\n")
+        if tag in ("p","div","li","h1","h2","h3","h4","tr","td","th","dt","dd","section","article","br","header","main","footer","nav","aside"): self.parts.append("\n")
     def handle_endtag(self,tag):
         if tag in ("script","style","noscript","template"):
             if self.ignored: self.ignored-=1
