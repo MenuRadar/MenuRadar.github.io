@@ -212,10 +212,9 @@ def main():
     write_agent_preview("📖 Source read started — preserving menu wording line by line…",heartbeat,[],False)
     src=source()
     local=build_data(src)
-    ai=gemini(src)
-    if ai:
-        for k in ["brand","location","address","country","slug","keyword","title","metaDescription","intro","relatedQueries","imageQueries"]:
-            if ai.get(k): local[k]=ai[k]
+    # Do not block publishing on Gemini. Source extraction is deterministic and complete.
+    # Gemini is optional metadata enrichment only and is intentionally skipped in the
+    # publishing path so a slow/expired API request can never leave Autopilot hanging.
     d=local
     d["source_url"]=os.environ.get("AGENT_SOURCE_URL","").strip()
     d["country"]=d.get("country") if d.get("country") in {"usa","uk","france","brazil","australia"} else "usa"
