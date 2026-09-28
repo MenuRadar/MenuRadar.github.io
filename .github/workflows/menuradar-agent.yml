@@ -1,13 +1,36 @@
 name: MenuRadar Free Autopilot
 on:
   workflow_dispatch:
+    inputs:
+      source:
+        description: "Optional raw source content"
+        required: false
+        type: string
+      source_url:
+        description: "Restaurant menu source URL"
+        required: false
+        type: string
+      max_images:
+        description: "Maximum images"
+        required: false
+        default: "4"
+        type: string
+      edit_existing:
+        description: "Edit an existing article"
+        required: false
+        default: false
+        type: boolean
   repository_dispatch:
     types: [menuradar_agent]
 permissions:
   contents: write
+concurrency:
+  group: menuradar-agent-publish
+  cancel-in-progress: false
 jobs:
   agent:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
