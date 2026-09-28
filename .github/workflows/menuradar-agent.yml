@@ -45,7 +45,7 @@ jobs:
           AGENT_SOURCE: ${{ github.event.client_payload.source || inputs.source }}
           AGENT_SOURCE_URL: ${{ github.event.client_payload.source_url || inputs.source_url || 'https://menupricetoday.com/us/brands/kfc/menu?branch=kfc-2662-main-st-f72e2a7b' }}
           MAX_IMAGES: ${{ github.event.client_payload.max_images || inputs.max_images || '4' }}
-          EDIT_EXISTING: ${{ github.event.client_payload.edit_existing || 'false' }}
+          EDIT_EXISTING: ${{ github.event.client_payload.edit_existing || (github.event_name == 'push' && 'true' || 'false') }}
         run: python scripts/menuradar_agent.py
       - name: Commit generated article and images
         run: |
