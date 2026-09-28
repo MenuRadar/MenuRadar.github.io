@@ -58,17 +58,25 @@ def source():
     return "\n".join(re.sub(r"[ \t]+"," ",line).strip() for line in s.splitlines() if line.strip())
 
 def clean_lines(src):
-    # Keep the source wording intact. Only normalize repeated whitespace and remove
-    # obvious site chrome that is not part of the menu itself.
     out=[]
-    skip={"menu","home","login","search","order now","skip to content","privacy policy","terms"}
+    skip_exact={"menu","home","login","search","order now","skip to content","privacy policy","terms",
+                "brands","compare","near me","price changes","blog","alerts","sign in","locations",
+                "all","save","updated weekly","avg. item price","today","us","menuprice"}
+    skip_contains=["skip to content","privacy policy","terms of use","sign in","log in",
+                   "order now","price changes","near me","updated weekly","avg. item price"]
     for raw in src.splitlines():
         x=re.sub(r"[ \t]+"," ",raw).strip()
         if not x: continue
-        if x.lower() in skip: continue
-        if x.startswith("self.__next_f.push") or x.startswith("window.__") or x.startswith("(()=>") or x.startswith("(function("): continue
+        if x.startswith("__MR_SECTION_HEADING__") and not x[len("__MR_SECTION_HEADING__"):].strip(): continue
+        low=x.lower().strip()
+        if low in skip_exact or any(p in low for p in skip_contains): continue
+        if x.startswith(("self.__next_f.push","window.__","(()=>","(function(")): continue
+        if re.fullmatch(r"[\d\s/()·•|,-]+",x): continue
         out.append(x)
-    return out
+    dedup=[]
+    for x in out:
+        if not dedup or x != dedup[-1]: dedup.append(x)
+    return dedup
 
 def price(text):
     m=re.search(r"(?:(?:[$£€]|R[$])\s*\d+(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?\s*(?:USD|GBP|EUR|BRL|AUD))",text,re.I)
@@ -122,40 +130,63 @@ def is_section_heading(x):
     if x.startswith(marker):
         return bool(x[len(marker):].strip())
     if price(x) or len(x)>85: return False
-    known=["breakfast","chicken","burgers","burger","meals","sandwiches","sides","snacks","desserts","drinks","beverages","coffee","bowls","combos","family","kids","appetizers","salads","wraps","pizza","pasta","popular items","menu","entrees","shareables","sauces","condiments","cookies","cakes","ice cream","featured","limited time","value","deals","boxes"]
-    return any(re.search(r"\b"+re.escape(k)+r"\b",x,re.I) for k in known)
+    low=x.strip().lower()
+    known={"breakfast","chicken","burgers","burger","meals","sandwiches","sides","snacks","desserts",
+           "drinks","beverages","coffee","bowls","combos","family","kids","appetizers","salads","wraps",
+           "pizza","pasta","popular items","menu","entrees","shareables","sauces","condiments","cookies",
+           "cakes","ice cream","featured","limited time","value","deals","boxes","tenders","wings"}
+    return low in known
 
 def exact_sections(lines):
-    sections=[]; current=None; pending=[]; used=set()
+    sections=[]; current=None; pending=[]
     def new_section(name):
         nonlocal current
-        current={"name":name or "Menu","icon":"🍽️","description":"Menu information reproduced from the supplied source.","items":[]}
+        name=re.sub(r"^__MR_SECTION_HEADING__","",name or "").strip()
+        current={"name":name or "Menu","icon":"🍽️",
+                 "description":"Menu information reproduced from the supplied source.","items":[]}
         sections.append(current)
-    for idx,x in enumerate(lines):
+    def flush():
+        nonlocal pending
+        if current is not None and pending and not current["items"]:
+            useful=[x for x in pending if len(x)>=3]
+            if useful: current.setdefault("source_lines",[]).extend(useful[-4:])
+        pending=[]
+    for x in lines:
+        if x.startswith("__MR_SECTION_HEADING__"):
+            flush()
+            heading=x[len("__MR_SECTION_HEADING__"):].strip()
+            if heading: new_section(heading)
+            continue
         if is_section_heading(x):
-            heading=x[len("__MR_SECTION_HEADING__"):].strip() if x.startswith("__MR_SECTION_HEADING__") else x
-            if pending:
-                # Preserve non-price lines rather than discarding them.
-                if current is None: new_section("Menu")
-                current.setdefault("source_lines",[]).extend(pending); pending=[]
-            new_section(heading); used.add(idx); continue
-        if price(x):
+            flush(); new_section(x); continue
+        p=price(x)
+        if p:
             if current is None: new_section("Menu")
-            # Attach immediately preceding non-heading lines to the item, preserving
-            # their exact source wording. This handles item-name / description / price
-            # layouts where the price is on its own line.
-            item_lines=pending[:] if pending else [x]
+            recent=[z for z in pending if len(z)>=2][-4:]
             pending=[]
-            name=item_lines[0] if item_lines else x
-            item={"name":name, "price":price(x), "note":"", "source_lines":item_lines}
+            non_price=[z for z in recent if not price(z)]
+            name=non_price[-1] if non_price else x
+            if name.lower() in {"save","avg. item price","updated weekly"}: continue
+            item={"name":name,"price":p,"note":"","source_lines":recent or [x]}
             if x not in item["source_lines"]: item["source_lines"].append(x)
-            current["items"].append(item); used.add(idx); continue
-        pending.append(x)
-    if pending:
-        if current is None: new_section("Source content")
-        current.setdefault("source_lines",[]).extend(pending)
-    # Do not drop sections; every meaningful source line remains represented.
-    return [s for s in sections if s.get("items") or s.get("source_lines")]
+            current["items"].append(item)
+            continue
+        x=x.replace("__MR_SECTION_HEADING__","").strip()
+        if x: pending.append(x)
+    flush()
+    cleaned=[]; seen_sections=set()
+    for s in sections:
+        key=re.sub(r"\s+"," ",s.get("name","").lower()).strip()
+        if key in seen_sections and not s.get("items"): continue
+        seen_sections.add(key)
+        seen_items=set(); items=[]
+        for i in s.get("items",[]):
+            ik=(i.get("name","").strip().lower(),i.get("price","").strip())
+            if ik in seen_items: continue
+            seen_items.add(ik); items.append(i)
+        s["items"]=items
+        if items or s.get("source_lines"): cleaned.append(s)
+    return cleaned
 
 def source_slug_hint(source_url=""):
     if not source_url: return ""
