@@ -253,9 +253,44 @@ def get_images(queries,slug,n):
         if len(out)>=n: break
     return out
 
+def menu_fingerprint(d):
+    """Fingerprint the actual extracted menu, independent of source URL or slug."""
+    rows=[]
+    for s in d.get    source_marker=f'<!-- menuradar-source-url: {source_url} -->\\n<!-- menuradar-source-identity: {source_id} -->\\n<!-- menuradar-menu-fingerprint: {menu_id} -->\\n'
+        for i in s.get("items",[]):
+            name=re.sub(r"\\s+"," ",str(i.get("name") or "").strip().lower())
+            p=re.sub(r"\\s+"," ",str(i.get("price") or "").strip().lower())
+            if name:
+                rows.append(name+"|"+p)
+    rows=sorted(set(rows))
+    if len(rows)<8:
+        return ""
+    import hashlib
+    return hashlib.sha256("\\n".join(rows).encode("utf-8")).hexdigest()
+
+def html_menu_fingerprint(markup):
+    """Read fingerprints from newer articles, or reconstruct one from menu-card HTML."""
+    m=re.search(r"menuradar-menu-fingerprint:\\s*([0-9a-f]{64})",markup,re.I)
+    if m: return m.group(1).lower()
+    rows=[]
+    for block in re.findall(r'<article class="menu-card">(.*?)</article>',markup,re.I|re.S):
+        nm=re.search(r'<h3>(.*?)</h3>',block,re.I|re.S)
+        pr=re.search(r'<span class="menu-price">(.*?)</span>',block,re.I|re.S)
+        if nm:
+            name=re.sub(r"<[^>]+>"," ",nm.group(1))
+            price_text=re.sub(r"<[^>]+>"," ",pr.group(1)) if pr else ""
+            name=re.sub(r"\\s+"," ",html.unescape(name).strip().lower())
+            price_text=re.sub(r"\\s+"," ",html.unescape(price_text).strip().lower())
+            if name: rows.append(name+"|"+price_text)
+    rows=sorted(set(rows))
+    if len(rows)<8: return ""
+    import hashlib
+    return hashlib.sha256("\\n".join(rows).encode("utf-8")).hexdigest()
+
 def render(d,ims):
     source_url=esc(d.get("source_url") or "")
     source_id=esc(source_identity(d.get("source_url") or ""))
+    menu_id=esc(menu_fingerprint(d))
     secs=[]
     source_marker=f'<!-- menuradar-source-url: {source_url} -->\\n<!-- menuradar-source-identity: {source_id} -->\\n'
     for s in d.get("sections",[]):
@@ -337,6 +372,18 @@ def find_existing_article(path, source_url):
     return ""
 
 
+def find_existing_menu_by_content(menu_id):
+    """Find an existing article with the same extracted menu, even when source URLs differ."""
+    if not menu_id: return ""
+    for candidate in Path(".").glob("**/index.html"):
+        try:
+            markup=candidate.read_text(encoding="utf-8",errors="ignore")
+            if html_menu_fingerprint(markup) == menu_id:
+                return str(candidate)
+        except Exception:
+            pass
+    return ""
+
 def main():
     heartbeat={"brand":"MenuRadar AI Autopilot","keyword":"Reading source…","title":"MenuRadar AI Autopilot — Processing","metaDescription":"Reading the supplied restaurant menu source line by line.","intro":"Source received. MenuRadar is preserving the supplied wording and organizing it into a readable menu design.","country":"usa","slug":"agent-processing","sections":[],"relatedQueries":[]}
     write_agent_preview("📖 Source read started — preserving menu wording line by line…",heartbeat,[],False)
@@ -360,6 +407,15 @@ def main():
     path=f'{d["country"]}/{d["slug"]}/index.html'
     edit_existing=os.environ.get("EDIT_EXISTING","false").strip().lower() in ("1","true","yes","on")
     existing=find_existing_article(path,d.get("source_url",""))
+    menu_id=menu_fingerprint(d)
+    same_menu=find_existing_menu_by_content(menu_id)
+    if same_menu and not existing:
+        d["status"]="Already published — same menu blocked"
+        write_agent_preview("⚠️ This menu is already published at "+same_menu+". Agent blocked the new article even though the source URL is different.",d,[],True)
+        print(json.dumps({"status":"duplicate_menu","existing_path":same_menu,"action":"skipped"},ensure_ascii=False))
+        return
+    if same_menu and existing and same_menu != existing:
+        existing=same_menu
     if existing and not edit_existing:
         d["status"]="Already published — duplicate blocked"
         write_agent_preview("⚠️ This article is already published at "+existing+". Agent did not publish it again. Enable “Edit existing article” when you want to update it.",d,[],True)
