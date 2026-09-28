@@ -63,7 +63,7 @@ def clean_lines(src):
                 "brands","compare","near me","price changes","blog","alerts","sign in","locations",
                 "all","save","updated weekly","avg. item price","today","us","menuprice"}
     skip_contains=["skip to content","privacy policy","terms of use","sign in","log in",
-                   "order now","price changes","near me","updated weekly","avg. item price"]
+                   "order now","price changes","near me","updated weekly","avg. item price","prices are sourced","available at around","browse the latest","find the cheapest pick"]
     for raw in src.splitlines():
         x=re.sub(r"[ \t]+"," ",raw).strip()
         if not x: continue
