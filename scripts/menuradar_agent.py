@@ -218,6 +218,20 @@ def render(d,ims):
     faq='<section class="section faq"><h2>About '+esc(brand)+' menu prices</h2><details><summary>Do '+esc(brand)+' menu prices vary by location?</summary><p>Yes. Prices and availability can vary by restaurant location, ordering channel and date.</p></details><details><summary>How was this menu page created?</summary><p>The supplied source was read and its menu lines were preserved; MenuRadar changes the presentation, not the source wording.</p></details></section>'
     return f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{esc(d.get("title"))}</title><meta name="description" content="{esc(d.get("metaDescription"))}"><meta name="robots" content="index,follow"><link rel="canonical" href="{BASE}/{esc(c)}/{esc(d.get("slug"))}/"><link rel="stylesheet" href="/styles.css"><style>.source-link{{display:inline-flex;margin-top:10px;font-weight:700;text-decoration:none}}.source-copy{{margin-top:10px}}.source-line{{font-size:.94rem;line-height:1.55;margin:3px 0;color:#344054}}.source-detail{{grid-column:1/-1;padding:12px 14px;background:#f8fafc;border-radius:10px}}.menu-card{{min-height:0}}.menu-card h3{{margin:0}}.menu-grid{{align-items:start}}</style></head><body><header class="site-header"><a class="logo" href="/">Menu<span>Radar</span></a></header><main><section class="menu-hero"><div class="menu-hero-inner"><p class="eyebrow">{esc(c.upper())} RESTAURANT MENU</p><h1>{esc(d.get("keyword"))}{(" — "+esc(loc)) if loc else ""}</h1><p class="lead">{esc(d.get("intro"))}</p>{cover}</div></section><div class="menu-layout"><div class="menu-main">{notice}<div class="facts">{facts_html}</div>{''.join(secs)}{inside}<section class="section" style="padding:55px 0 10px"><h2>Related Menu Searches</h2><div class="related">{rel_html}</div><p class="disclaimer">MenuRadar presents source-based menu information. Confirm current prices and availability with the local restaurant.</p></section></div></div>{faq}</main><footer><div class="footer-inner"><b>MenuRadar</b><span>Restaurant Menus, Prices & More</span></div></footer></body></html>'''
 
+def find_existing_article(path, source_url):
+    p=Path(path)
+    if p.exists(): return str(p)
+    target=(source_url or "").strip().rstrip("/")
+    if not target: return ""
+    for candidate in Path(".").glob("**/index.html"):
+        try:
+            text=candidate.read_text(encoding="utf-8",errors="ignore")
+            if target and target in text:
+                return str(candidate)
+        except Exception:
+            pass
+    return ""
+
 def main():
     heartbeat={"brand":"MenuRadar AI Autopilot","keyword":"Reading source…","title":"MenuRadar AI Autopilot — Processing","metaDescription":"Reading the supplied restaurant menu source line by line.","intro":"Source received. MenuRadar is preserving the supplied wording and organizing it into a readable menu design.","country":"usa","slug":"agent-processing","sections":[],"relatedQueries":[]}
     write_agent_preview("📖 Source read started — preserving menu wording line by line…",heartbeat,[],False)
@@ -239,6 +253,13 @@ def main():
     ims=get_images(d["imageQueries"],d["slug"],max(1,min(int(os.environ.get("MAX_IMAGES","4")),6)))
     write_agent_preview(f"Images processed: {len(ims)} — source-faithful menu design is being assembled…",d,ims,False)
     path=f'{d["country"]}/{d["slug"]}/index.html'
+    edit_existing=os.environ.get("EDIT_EXISTING","false").strip().lower() in ("1","true","yes","on")
+    existing=find_existing_article(path,d.get("source_url",""))
+    if existing and not edit_existing:
+        d["status"]="Already published — duplicate blocked"
+        write_agent_preview("⚠️ This article is already published at "+existing+". Agent did not publish it again. Enable “Edit existing article” when you want to update it.",d,[],True)
+        print(json.dumps({"status":"duplicate","existing_path":existing,"action":"skipped"},ensure_ascii=False))
+        return
     p=Path(path);p.parent.mkdir(parents=True,exist_ok=True);p.write_text(render(d,ims),encoding="utf-8")
     h=Path("index.html");s=h.read_text(encoding="utf-8");href="/"+path.rsplit("/index.html",1)[0]+"/";card=f'<a href="{href}"><strong>🍽️ {esc(d["title"])}</strong><br><small>MenuRadar restaurant/menu guide</small></a>\n'
     if href not in s:s=s.replace('<div class="topic-grid">','<div class="topic-grid">\n'+card,1)
