@@ -256,21 +256,19 @@ def get_images(queries,slug,n):
 def menu_fingerprint(d):
     """Fingerprint the actual extracted menu, independent of source URL or slug."""
     rows=[]
-    for s in d.get    source_marker=f'<!-- menuradar-source-url: {source_url} -->\\n<!-- menuradar-source-identity: {source_id} -->\\n<!-- menuradar-menu-fingerprint: {menu_id} -->\\n'
+    for s in d.get("sections",[]):
         for i in s.get("items",[]):
-            name=re.sub(r"\\s+"," ",str(i.get("name") or "").strip().lower())
-            p=re.sub(r"\\s+"," ",str(i.get("price") or "").strip().lower())
-            if name:
-                rows.append(name+"|"+p)
+            name=re.sub(r"\s+"," ",str(i.get("name") or "").strip().lower())
+            p=re.sub(r"\s+"," ",str(i.get("price") or "").strip().lower())
+            if name: rows.append(name+"|"+p)
     rows=sorted(set(rows))
-    if len(rows)<8:
-        return ""
+    if len(rows)<8: return ""
     import hashlib
-    return hashlib.sha256("\\n".join(rows).encode("utf-8")).hexdigest()
+    return hashlib.sha256("\n".join(rows).encode("utf-8")).hexdigest()
 
 def html_menu_fingerprint(markup):
     """Read fingerprints from newer articles, or reconstruct one from menu-card HTML."""
-    m=re.search(r"menuradar-menu-fingerprint:\\s*([0-9a-f]{64})",markup,re.I)
+    m=re.search(r"menuradar-menu-fingerprint:\s*([0-9a-f]{64})",markup,re.I)
     if m: return m.group(1).lower()
     rows=[]
     for block in re.findall(r'<article class="menu-card">(.*?)</article>',markup,re.I|re.S):
@@ -279,20 +277,20 @@ def html_menu_fingerprint(markup):
         if nm:
             name=re.sub(r"<[^>]+>"," ",nm.group(1))
             price_text=re.sub(r"<[^>]+>"," ",pr.group(1)) if pr else ""
-            name=re.sub(r"\\s+"," ",html.unescape(name).strip().lower())
-            price_text=re.sub(r"\\s+"," ",html.unescape(price_text).strip().lower())
+            name=re.sub(r"\s+"," ",html.unescape(name).strip().lower())
+            price_text=re.sub(r"\s+"," ",html.unescape(price_text).strip().lower())
             if name: rows.append(name+"|"+price_text)
     rows=sorted(set(rows))
     if len(rows)<8: return ""
     import hashlib
-    return hashlib.sha256("\\n".join(rows).encode("utf-8")).hexdigest()
+    return hashlib.sha256("\n".join(rows).encode("utf-8")).hexdigest()
 
 def render(d,ims):
     source_url=esc(d.get("source_url") or "")
     source_id=esc(source_identity(d.get("source_url") or ""))
     menu_id=esc(menu_fingerprint(d))
     secs=[]
-    source_marker=f'<!-- menuradar-source-url: {source_url} -->\\n<!-- menuradar-source-identity: {source_id} -->\\n'
+    source_marker=f'<!-- menuradar-source-url: {source_url} -->\\n<!-- menuradar-source-identity: {source_id} -->\\n<!-- menuradar-menu-fingerprint: {menu_id} -->\\n'
     for s in d.get("sections",[]):
         cards=[]
         for i in s.get("items",[]):
