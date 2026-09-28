@@ -1,4 +1,5 @@
 import os,re,json,html
+from urllib.parse import urlparse,parse_qs
 from pathlib import Path
 from io import BytesIO
 import requests
@@ -12,23 +13,27 @@ def slugify(s): return re.sub(r"[^a-z0-9]+","-",str(s or "").lower()).strip("-")
 
 class TextParser(HTMLParser):
     def __init__(self):
-        super().__init__(); self.parts=[]; self.title=""; self.in_title=False; self.ignored=0
+        super().__init__(); self.parts=[]; self.title=""; self.in_title=False; self.ignored=0; self.heading_tag=None
     def handle_starttag(self,tag,attrs):
         if tag in ("script","style","noscript","template"): self.ignored+=1; return
         if tag=="title": self.in_title=True
+        if tag in ("h2","h3","h4"):
+            self.heading_tag=tag
+            self.parts.append("\n__MR_SECTION_HEADING__\n")
         if tag in ("p","div","li","h1","h2","h3","h4","tr","section","article","br","header","main","footer","nav","aside"): self.parts.append("\n")
     def handle_endtag(self,tag):
         if tag in ("script","style","noscript","template"):
             if self.ignored: self.ignored-=1
             return
         if tag=="title": self.in_title=False
+        if tag in ("h2","h3","h4"): self.heading_tag=None
         if tag in ("p","div","li","h1","h2","h3","h4","tr","section","article","header","main","footer","nav","aside"): self.parts.append("\n")
     def handle_data(self,data):
         if self.ignored: return
-        t=data.strip()
-        if t:
-            self.parts.append(t)
-            if self.in_title: self.title+=t
+        t=re.sub(r"\s+"," ",data).strip()
+        if not t: return
+        self.parts.append(t)
+        if self.in_title: self.title+=t
 
 def write_agent_preview(status, data, ims=None, done=False):
     payload=dict(data or {})
@@ -113,12 +118,12 @@ Source:
     return None
 
 def is_section_heading(x):
+    marker="__MR_SECTION_HEADING__"
+    if x.startswith(marker):
+        return bool(x[len(marker):].strip())
     if price(x) or len(x)>85: return False
-    known=["breakfast","chicken","burgers","burger","meals","sandwiches","sides","snacks","desserts","drinks","beverages","coffee","bowls","combos","family","kids","appetizers","salads","wraps","pizza","pasta","popular items","menu"]
-    if any(re.search(r"\\b"+re.escape(k)+r"\\b",x,re.I) for k in known): return True
-    # Source headings are usually short, title-like lines.
-    words=x.split()
-    return 1 <= len(words) <= 6 and x[:1].isupper() and not re.search(r"[.!?]$",x)
+    known=["breakfast","chicken","burgers","burger","meals","sandwiches","sides","snacks","desserts","drinks","beverages","coffee","bowls","combos","family","kids","appetizers","salads","wraps","pizza","pasta","popular items","menu","entrees","shareables","sauces","condiments","cookies","cakes","ice cream","featured","limited time","value","deals","boxes"]
+    return any(re.search(r"\b"+re.escape(k)+r"\b",x,re.I) for k in known)
 
 def exact_sections(lines):
     sections=[]; current=None; pending=[]; used=set()
@@ -128,11 +133,12 @@ def exact_sections(lines):
         sections.append(current)
     for idx,x in enumerate(lines):
         if is_section_heading(x):
+            heading=x[len("__MR_SECTION_HEADING__"):].strip() if x.startswith("__MR_SECTION_HEADING__") else x
             if pending:
                 # Preserve non-price lines rather than discarding them.
                 if current is None: new_section("Menu")
                 current.setdefault("source_lines",[]).extend(pending); pending=[]
-            new_section(x); used.add(idx); continue
+            new_section(heading); used.add(idx); continue
         if price(x):
             if current is None: new_section("Menu")
             # Attach immediately preceding non-heading lines to the item, preserving
@@ -151,6 +157,22 @@ def exact_sections(lines):
     # Do not drop sections; every meaningful source line remains represented.
     return [s for s in sections if s.get("items") or s.get("source_lines")]
 
+def source_slug_hint(source_url=""):
+    if not source_url: return ""
+    try:
+        q=parse_qs(urlparse(source_url).query)
+        branch=(q.get("branch") or [""])[0].strip().lower()
+        if branch:
+            branch=re.sub(r"-[a-f0-9]{8}$","",branch)
+            return slugify(branch)
+        path=urlparse(source_url).path.rstrip("/")
+        tail=path.split("/")[-1] if path else ""
+        if tail and tail not in {"menu","menus","restaurant"}:
+            return slugify(tail)
+    except Exception:
+        pass
+    return ""
+
 def build_data(src,source_url=""):
     lines=clean_lines(src); blob=" ".join(lines); country=infer_country(blob,source_url); brand=""
     for x in lines[:160]:
@@ -162,7 +184,11 @@ def build_data(src,source_url=""):
     for x in lines[:200]:
         if len(x)<140 and re.search(r",|\b(?:road|rd|street|st|avenue|ave|drive|dr|lane|ln|boulevard|blvd)\b",x,re.I) and x.lower()!=brand.lower():
             loc=x; break
-    keyword=(brand+" menu").strip(); slug=slugify(keyword)
+    keyword=(brand+" menu").strip()
+    location_hint=source_slug_hint(source_url)
+    if location_hint and brand.lower() not in location_hint:
+        location_hint=slugify(brand+"-"+location_hint)
+    slug=location_hint or (slugify(brand+"-"+slugify(loc)) if loc else slugify(keyword))
     sections=exact_sections(lines)
     if not sections:
         sections=[{"name":"Source Menu","icon":"🍽️","description":"Menu information reproduced from the supplied source.","items":[{"name":x,"price":"","note":"","source_lines":[x]} for x in lines]}]
@@ -218,6 +244,23 @@ def render(d,ims):
     faq='<section class="section faq"><h2>About '+esc(brand)+' menu prices</h2><details><summary>Do '+esc(brand)+' menu prices vary by location?</summary><p>Yes. Prices and availability can vary by restaurant location, ordering channel and date.</p></details><details><summary>How was this menu page created?</summary><p>The supplied source was read and its menu lines were preserved; MenuRadar changes the presentation, not the source wording.</p></details></section>'
     return f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{esc(d.get("title"))}</title><meta name="description" content="{esc(d.get("metaDescription"))}"><meta name="robots" content="index,follow"><link rel="canonical" href="{BASE}/{esc(c)}/{esc(d.get("slug"))}/"><link rel="stylesheet" href="/styles.css"><style>.source-link{{display:inline-flex;margin-top:10px;font-weight:700;text-decoration:none}}.source-copy{{margin-top:10px}}.source-line{{font-size:.94rem;line-height:1.55;margin:3px 0;color:#344054}}.source-detail{{grid-column:1/-1;padding:12px 14px;background:#f8fafc;border-radius:10px}}.menu-card{{min-height:0}}.menu-card h3{{margin:0}}.menu-grid{{align-items:start}}</style></head><body><header class="site-header"><a class="logo" href="/">Menu<span>Radar</span></a></header><main><section class="menu-hero"><div class="menu-hero-inner"><p class="eyebrow">{esc(c.upper())} RESTAURANT MENU</p><h1>{esc(d.get("keyword"))}{(" — "+esc(loc)) if loc else ""}</h1><p class="lead">{esc(d.get("intro"))}</p>{cover}</div></section><div class="menu-layout"><div class="menu-main">{notice}<div class="facts">{facts_html}</div>{''.join(secs)}{inside}<section class="section" style="padding:55px 0 10px"><h2>Related Menu Searches</h2><div class="related">{rel_html}</div><p class="disclaimer">MenuRadar presents source-based menu information. Confirm current prices and availability with the local restaurant.</p></section></div></div>{faq}</main><footer><div class="footer-inner"><b>MenuRadar</b><span>Restaurant Menus, Prices & More</span></div></footer></body></html>'''
 
+def validate_for_publish(d, rendered_html, path):
+    keyword=(d.get("keyword") or "").strip().lower()
+    brand=(d.get("brand") or "").strip().lower()
+    if not keyword or not brand:
+        raise RuntimeError("SEO validation failed: brand or primary keyword is empty")
+    visible=html.unescape(re.sub(r"\s+"," ",re.sub(r"<[^>]+>"," ",rendered_html))).lower()
+    if visible.count(keyword) < 3:
+        raise RuntimeError(f"SEO validation failed: primary keyword must appear at least 3 times; found {visible.count(keyword)}")
+    if visible.count(brand) < 3:
+        raise RuntimeError(f"SEO validation failed: brand must appear at least 3 times; found {visible.count(brand)}")
+    canonical=f'{BASE}/{d.get("country")}/{d.get("slug")}/'
+    if canonical not in rendered_html:
+        raise RuntimeError("SEO validation failed: canonical URL does not match output path")
+    if not d.get("metaDescription"):
+        raise RuntimeError("SEO validation failed: meta description is empty")
+    return True
+
 def find_existing_article(path, source_url):
     p=Path(path)
     if p.exists(): return str(p)
@@ -260,7 +303,14 @@ def main():
         write_agent_preview("⚠️ This article is already published at "+existing+". Agent did not publish it again. Enable “Edit existing article” when you want to update it.",d,[],True)
         print(json.dumps({"status":"duplicate","existing_path":existing,"action":"skipped"},ensure_ascii=False))
         return
-    p=Path(path);p.parent.mkdir(parents=True,exist_ok=True);p.write_text(render(d,ims),encoding="utf-8")
+    # Editing an existing source must update its current path, not create a second slug.
+    if existing and edit_existing:
+        path=existing.replace("\\","/")
+        if path.endswith("/index.html"):
+            d["slug"]=path[:-len("/index.html")].split("/",1)[-1]
+    rendered=render(d,ims)
+    validate_for_publish(d,rendered,path)
+    p=Path(path);p.parent.mkdir(parents=True,exist_ok=True);p.write_text(rendered,encoding="utf-8")
     h=Path("index.html");s=h.read_text(encoding="utf-8");href="/"+path.rsplit("/index.html",1)[0]+"/";card=f'<a href="{href}"><strong>🍽️ {esc(d["title"])}</strong><br><small>MenuRadar restaurant/menu guide</small></a>\n'
     if href not in s:s=s.replace('<div class="topic-grid">','<div class="topic-grid">\n'+card,1)
     h.write_text(s,encoding="utf-8")
