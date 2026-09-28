@@ -19,6 +19,7 @@ jobs:
           AGENT_SOURCE: ${{ github.event.client_payload.source || inputs.source }}
           AGENT_SOURCE_URL: ${{ github.event.client_payload.source_url || inputs.source_url }}
           MAX_IMAGES: ${{ github.event.client_payload.max_images || inputs.max_images || '4' }}
+          EDIT_EXISTING: ${{ github.event.client_payload.edit_existing || 'false' }}
         run: python scripts/menuradar_agent.py
       - name: Commit generated article and images
         run: |
