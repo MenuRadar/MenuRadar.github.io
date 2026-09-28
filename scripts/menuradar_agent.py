@@ -254,7 +254,10 @@ def get_images(queries,slug,n):
     return out
 
 def render(d,ims):
+    source_url=esc(d.get("source_url") or "")
+    source_id=esc(source_identity(d.get("source_url") or ""))
     secs=[]
+    source_marker=f'<!-- menuradar-source-url: {source_url} -->\\n<!-- menuradar-source-identity: {source_id} -->\\n'
     for s in d.get("sections",[]):
         cards=[]
         for i in s.get("items",[]):
@@ -295,19 +298,41 @@ def validate_for_publish(d, rendered_html, path):
         raise RuntimeError("SEO validation failed: meta description is empty")
     return True
 
+def source_identity(source_url):
+    """Stable identity for the supplied source. Branch hash changes are ignored."""
+    u=(source_url or "").strip().rstrip("/")
+    if not u: return ""
+    try:
+        parsed=urlparse(u)
+        q=parse_qs(parsed.query)
+        branch=(q.get("branch") or [""])[0].strip().lower()
+        if branch:
+            branch=re.sub(r"-[a-f0-9]{8}$","",branch)
+            return parsed.netloc.lower()+parsed.path.rstrip("/").lower()+"?branch="+branch
+        return parsed.netloc.lower()+parsed.path.rstrip("/").lower()
+    except Exception:
+        return u.lower()
+
 def find_existing_article(path, source_url):
     p=Path(path)
     if p.exists(): return str(p)
     target=(source_url or "").strip().rstrip("/")
-    if not target: return ""
+    identity=source_identity(source_url)
+    if not target and not identity: return ""
     for candidate in Path(".").glob("**/index.html"):
         try:
-            text=candidate.read_text(encoding="utf-8",errors="ignore")
-            if target and target in text:
+            html=candidate.read_text(encoding="utf-8",errors="ignore")
+            if identity and ("menuradar-source-identity: "+identity) in html:
+                return str(candidate)
+            if target and target in html:
+                return str(candidate)
+            # Backward compatibility for Agent articles created before the marker.
+            if identity and identity in html.lower():
                 return str(candidate)
         except Exception:
             pass
     return ""
+
 
 def main():
     heartbeat={"brand":"MenuRadar AI Autopilot","keyword":"Reading source…","title":"MenuRadar AI Autopilot — Processing","metaDescription":"Reading the supplied restaurant menu source line by line.","intro":"Source received. MenuRadar is preserving the supplied wording and organizing it into a readable menu design.","country":"usa","slug":"agent-processing","sections":[],"relatedQueries":[]}
