@@ -266,24 +266,44 @@ def menu_fingerprint(d):
     import hashlib
     return hashlib.sha256("\n".join(rows).encode("utf-8")).hexdigest()
 
-def html_menu_fingerprint(markup):
-    """Read fingerprints from newer articles, or reconstruct one from menu-card HTML."""
-    m=re.search(r"menuradar-menu-fingerprint:\s*([0-9a-f]{64})",markup,re.I)
-    if m: return m.group(1).lower()
+def _menu_rows_from_html(markup):
     rows=[]
-    for block in re.findall(r'<article class="menu-card">(.*?)</article>',markup,re.I|re.S):
-        nm=re.search(r'<h3>(.*?)</h3>',block,re.I|re.S)
-        pr=re.search(r'<span class="menu-price">(.*?)</span>',block,re.I|re.S)
+    for block in re.findall(r'<article\\s+class=["'][^"']*menu-card[^"']*["'][^>]*>(.*?)</article>',markup,re.I|re.S):
+        nm=re.search(r'<h3[^>]*>(.*?)</h3>',block,re.I|re.S)
+        pr=re.search(r'<span[^>]*class=["'][^"']*menu-price[^"']*["'][^>]*>(.*?)</span>',block,re.I|re.S)
         if nm:
             name=re.sub(r"<[^>]+>"," ",nm.group(1))
             price_text=re.sub(r"<[^>]+>"," ",pr.group(1)) if pr else ""
-            name=re.sub(r"\s+"," ",html.unescape(name).strip().lower())
-            price_text=re.sub(r"\s+"," ",html.unescape(price_text).strip().lower())
-            if name: rows.append(name+"|"+price_text)
+            name=re.sub(r"\\s+"," ",html.unescape(name).strip().lower())
+            price_text=re.sub(r"\\s+"," ",html.unescape(price_text).strip().lower())
+            if name: rows.append((name,price_text))
+    return sorted(set(rows))
+
+def menu_name_fingerprint(d):
+    rows=[]
+    for s in d.get("sections",[]):
+        for i in s.get("items",[]):
+            name=re.sub(r"\\s+"," ",str(i.get("name") or "").strip().lower())
+            if name: rows.append(name)
     rows=sorted(set(rows))
     if len(rows)<8: return ""
     import hashlib
-    return hashlib.sha256("\n".join(rows).encode("utf-8")).hexdigest()
+    return hashlib.sha256("\\n".join(rows).encode("utf-8")).hexdigest()
+
+def html_menu_name_fingerprint(markup):
+    rows=sorted(set(name for name,_ in _menu_rows_from_html(markup)))
+    if len(rows)<8: return ""
+    import hashlib
+    return hashlib.sha256("\\n".join(rows).encode("utf-8")).hexdigest()
+
+def html_menu_fingerprint(markup):
+    """Read fingerprints from newer articles, or reconstruct older menu-card HTML."""
+    m=re.search(r"menuradar-menu-fingerprint:\s*([0-9a-f]{64})",markup,re.I)
+    if m: return m.group(1).lower()
+    rows=_menu_rows_from_html(markup)
+    if len(rows)<8: return ""
+    import hashlib
+    return hashlib.sha256("\\n".join(n+"|"+p for n,p in rows).encode("utf-8")).hexdigest()
 
 def render(d,ims):
     source_url=esc(d.get("source_url") or "")
@@ -370,13 +390,15 @@ def find_existing_article(path, source_url):
     return ""
 
 
-def find_existing_menu_by_content(menu_id):
-    """Find an existing article with the same extracted menu, even when source URLs differ."""
-    if not menu_id: return ""
+def find_existing_menu_by_content(menu_id, menu_name_id=""):
+    """Find same menu even when source URL, slug, or prices differ."""
+    if not menu_id and not menu_name_id: return ""
     for candidate in Path(".").glob("**/index.html"):
         try:
             markup=candidate.read_text(encoding="utf-8",errors="ignore")
-            if html_menu_fingerprint(markup) == menu_id:
+            if menu_id and html_menu_fingerprint(markup) == menu_id:
+                return str(candidate)
+            if menu_name_id and html_menu_name_fingerprint(markup) == menu_name_id:
                 return str(candidate)
         except Exception:
             pass
@@ -406,7 +428,8 @@ def main():
     edit_existing=os.environ.get("EDIT_EXISTING","false").strip().lower() in ("1","true","yes","on")
     existing=find_existing_article(path,d.get("source_url",""))
     menu_id=menu_fingerprint(d)
-    same_menu=find_existing_menu_by_content(menu_id)
+    menu_name_id=menu_name_fingerprint(d)
+    same_menu=find_existing_menu_by_content(menu_id, menu_name_id)
     if same_menu and not existing:
         d["status"]="Already published — same menu blocked"
         write_agent_preview("⚠️ This menu is already published at "+same_menu+". Agent blocked the new article even though the source URL is different.",d,[],True)
