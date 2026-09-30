@@ -226,7 +226,11 @@ def build_data(src,source_url=""):
     sections=exact_sections(lines)
     if not sections:
         sections=[{"name":"Source Menu","icon":"🍽️","description":"Menu information reproduced from the supplied source.","items":[{"name":x,"price":"","note":"","source_lines":[x]} for x in lines]}]
-    location_label=loc or re.sub(r"^"+re.escape(brand)+r"[- ]*","",location_hint.replace("-"," ")).strip()
+    raw_location=loc.strip()
+    generic_location=bool(re.search(r"(menu prices|full menu|restaurant menu|united states|2026)",raw_location,re.I))
+    branch_location=re.sub(r"^"+re.escape(brand)+r"[- ]*","",location_hint.replace("-"," ")).strip()
+    location_label=(branch_location.title() if branch_location and (generic_location or not raw_location) else raw_location)
+    if not location_label: location_label="United States"
     base_terms=[
         f"{brand} menu",f"{brand} menu prices",f"{brand} restaurant menu",f"{brand} food menu",
         f"{brand} pizza menu",f"{brand} pizza prices",f"{brand} deals menu",f"{brand} specials menu",
