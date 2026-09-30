@@ -498,7 +498,7 @@ def main():
         write_agent_preview("⚠️ This menu is already published at "+same_menu+". Agent blocked the new article even though the source URL is different.",d,[],True)
         print(json.dumps({"status":"duplicate_menu","existing_path":same_menu,"action":"skipped"},ensure_ascii=False))
         return
-    if same_menu and existing and same_menu != existing:
+    if same_menu and existing and same_menu != existing and not edit_existing:
         existing=same_menu
     if existing and not edit_existing:
         d["status"]="Already published — duplicate blocked"
