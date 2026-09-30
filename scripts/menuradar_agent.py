@@ -268,14 +268,14 @@ def menu_fingerprint(d):
 
 def _menu_rows_from_html(markup):
     rows=[]
-    for block in re.findall(r'<article\\s+class=["'][^"']*menu-card[^"']*["'][^>]*>(.*?)</article>',markup,re.I|re.S):
+    for block in re.findall(r'<article\s+class=["\'][^"\']*menu-card[^"\']*["\'][^>]*>(.*?)</article>',markup,re.I|re.S):
         nm=re.search(r'<h3[^>]*>(.*?)</h3>',block,re.I|re.S)
-        pr=re.search(r'<span[^>]*class=["'][^"']*menu-price[^"']*["'][^>]*>(.*?)</span>',block,re.I|re.S)
+        pr=re.search(r'<span[^>]*class=["\'][^"\']*menu-price[^"\']*["\'][^>]*>(.*?)</span>',block,re.I|re.S)
         if nm:
             name=re.sub(r"<[^>]+>"," ",nm.group(1))
             price_text=re.sub(r"<[^>]+>"," ",pr.group(1)) if pr else ""
-            name=re.sub(r"\\s+"," ",html.unescape(name).strip().lower())
-            price_text=re.sub(r"\\s+"," ",html.unescape(price_text).strip().lower())
+            name=re.sub(r"\s+"," ",html.unescape(name).strip().lower())
+            price_text=re.sub(r"\s+"," ",html.unescape(price_text).strip().lower())
             if name: rows.append((name,price_text))
     return sorted(set(rows))
 
@@ -283,12 +283,12 @@ def menu_name_fingerprint(d):
     rows=[]
     for s in d.get("sections",[]):
         for i in s.get("items",[]):
-            name=re.sub(r"\\s+"," ",str(i.get("name") or "").strip().lower())
+            name=re.sub(r"\s+"," ",str(i.get("name") or "").strip().lower())
             if name: rows.append(name)
     rows=sorted(set(rows))
     if len(rows)<8: return ""
     import hashlib
-    return hashlib.sha256("\\n".join(rows).encode("utf-8")).hexdigest()
+    return hashlib.sha256("\n".join(rows).encode("utf-8")).hexdigest()
 
 def html_menu_name_fingerprint(markup):
     rows=sorted(set(name for name,_ in _menu_rows_from_html(markup)))
@@ -303,7 +303,7 @@ def html_menu_fingerprint(markup):
     rows=_menu_rows_from_html(markup)
     if len(rows)<8: return ""
     import hashlib
-    return hashlib.sha256("\\n".join(n+"|"+p for n,p in rows).encode("utf-8")).hexdigest()
+    return hashlib.sha256("\n".join(n+"|"+p for n,p in rows).encode("utf-8")).hexdigest()
 
 def render(d,ims):
     source_url=esc(d.get("source_url") or "")
@@ -390,9 +390,21 @@ def find_existing_article(path, source_url):
     return ""
 
 
-def find_existing_menu_by_content(menu_id, menu_name_id=""):
-    """Find same menu even when source URL, slug, or prices differ."""
-    if not menu_id and not menu_name_id: return ""
+def _menu_name_set_from_data(d):
+    names=set()
+    for sec in d.get("sections",[]):
+        for item in sec.get("items",[]):
+            n=re.sub(r"\s+"," ",str(item.get("name") or "").strip().lower())
+            if n: names.add(n)
+    return names
+
+def _menu_name_set_from_html(markup):
+    return {n for n,_ in _menu_rows_from_html(markup)}
+
+def find_existing_menu_by_content(menu_id, menu_name_id="", new_names=None):
+    """Find duplicate menus by exact fingerprint or high item-name overlap."""
+    if not menu_id and not menu_name_id and not new_names: return ""
+    new_names=set(new_names or [])
     for candidate in Path(".").glob("**/index.html"):
         try:
             markup=candidate.read_text(encoding="utf-8",errors="ignore")
@@ -400,6 +412,12 @@ def find_existing_menu_by_content(menu_id, menu_name_id=""):
                 return str(candidate)
             if menu_name_id and html_menu_name_fingerprint(markup) == menu_name_id:
                 return str(candidate)
+            if len(new_names) >= 20:
+                old_names=_menu_name_set_from_html(markup)
+                if len(old_names) >= 20:
+                    overlap=len(new_names & old_names) / float(min(len(new_names),len(old_names)))
+                    if overlap >= 0.90:
+                        return str(candidate)
         except Exception:
             pass
     return ""
@@ -429,7 +447,7 @@ def main():
     existing=find_existing_article(path,d.get("source_url",""))
     menu_id=menu_fingerprint(d)
     menu_name_id=menu_name_fingerprint(d)
-    same_menu=find_existing_menu_by_content(menu_id, menu_name_id)
+    same_menu=find_existing_menu_by_content(menu_id, menu_name_id, _menu_name_set_from_data(d))
     if same_menu and not existing:
         d["status"]="Already published — same menu blocked"
         write_agent_preview("⚠️ This menu is already published at "+same_menu+". Agent blocked the new article even though the source URL is different.",d,[],True)
