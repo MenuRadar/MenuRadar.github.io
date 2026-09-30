@@ -375,7 +375,7 @@ def validate_for_publish(d, rendered_html, path):
     matched=sum(1 for term in seo_terms if term.lower() in visible)
     if len(seo_terms)>=30 and matched<30:
         raise RuntimeError(f"SEO validation failed: at least 30 SEO keyword phrases must be present; found {matched}")
-    if len(re.findall(r"<h2\\b",rendered_html,re.I))<8:
+    if len(re.findall(r"<h2\b",rendered_html,re.I))<8:
         raise RuntimeError("SEO validation failed: expected keyword-focused H2 headings")
     if visible.count(brand) < 3:
         raise RuntimeError(f"SEO validation failed: brand must appear at least 3 times; found {visible.count(brand)}")
