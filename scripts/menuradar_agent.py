@@ -226,12 +226,33 @@ def build_data(src,source_url=""):
     sections=exact_sections(lines)
     if not sections:
         sections=[{"name":"Source Menu","icon":"🍽️","description":"Menu information reproduced from the supplied source.","items":[{"name":x,"price":"","note":"","source_lines":[x]} for x in lines]}]
+    location_label=loc or re.sub(r"^"+re.escape(brand)+r"[- ]*","",location_hint.replace("-"," ")).strip()
+    base_terms=[
+        f"{brand} menu",f"{brand} menu prices",f"{brand} restaurant menu",f"{brand} food menu",
+        f"{brand} pizza menu",f"{brand} pizza prices",f"{brand} deals menu",f"{brand} specials menu",
+        f"{brand} wings menu",f"{brand} sides menu",f"{brand} pasta menu",f"{brand} drinks menu",
+        f"{brand} desserts menu",f"{brand} melts menu",f"{brand} crust menu",f"{brand} dinner box",
+        f"{brand} personal pan pizza",f"{brand} pepperoni pizza",f"{brand} meat lovers pizza",
+        f"{brand} stuffed crust pizza",f"{brand} prices USA",f"{brand} menu USA",f"{brand} menu 2026",
+        f"{brand} menu items",f"{brand} popular menu items",f"{brand} menu options",f"{brand} delivery menu",
+        f"{brand} takeout menu",f"{brand} local menu",f"{brand} store menu",f"{brand} restaurant prices",
+        f"{brand} food prices",f"{brand} menu near me",f"{brand} location menu",f"{brand} menu by location",
+        f"{brand} menu and prices",f"{brand} full menu",f"{brand} current menu",f"{brand} menu guide",f"{brand} menu information"]
+    if location_label:
+        base_terms += [f"{brand} {location_label} menu",f"{brand} {location_label} menu prices",
+                       f"{brand} {location_label} restaurant",f"{brand} {location_label} food menu",
+                       f"{brand} {location_label} prices",f"{brand} {location_label} location menu"]
+    seo_keywords=list(dict.fromkeys(x.strip() for x in base_terms if x.strip()))[:50]
+    heading_keywords=[f"{brand} Menu & Prices",f"{brand} Restaurant Menu and Popular Menu Items",
+                      f"{brand} Pizza Menu and Pizza Prices",f"{brand} Wings, Sides and Pasta Menu",
+                      f"{brand} Deals, Dinner Boxes and Specials",f"{brand} Desserts, Drinks and Extras",
+                      f"{brand} Menu Prices by Location",f"{brand} Menu Guide for 2026"]
     queries=[brand+" menu",brand+" menu prices",brand+" restaurant menu"]
     return {"brand":brand,"location":loc,"address":"","country":country,"slug":slug,"keyword":keyword,
-            "title":brand+" Menu & Prices | MenuRadar",
-            "metaDescription":f"{keyword}, menu items and source-based pricing. Prices and availability may vary by location and ordering channel.",
-            "intro":f"Explore the {keyword} using the supplied menu source. Menu wording and listed information are preserved while the page is organized into readable sections.",
-            "sections":sections,"relatedQueries":queries,"imageQueries":queries}
+            "title":(brand+" Menu & Prices"+((" — "+location_label) if location_label else "")+" | MenuRadar"),
+            "metaDescription":f"{brand} menu and prices"+((" for "+location_label) if location_label else "")+" with pizza, wings, sides, pasta, drinks, desserts and popular menu items. Prices vary by location.",
+            "intro":f"Explore the {brand} menu"+((" at "+location_label) if location_label else "")+" using the supplied menu source. Menu items and listed source pricing are organized into clear sections, while local prices and availability may vary.",
+            "sections":sections,"relatedQueries":queries,"imageQueries":queries,"seoKeywords":seo_keywords,"seoHeadings":heading_keywords}
 
 def get_images(queries,slug,n):
     out=[]
@@ -331,8 +352,16 @@ def render(d,ims):
     facts_html=''.join('<div class="fact"><b>'+esc(a)+'</b><span>'+esc(b)+'</span></div>' for a,b in [("Restaurant",brand),("Location",loc or {"usa":"United States","uk":"United Kingdom","france":"France","brazil":"Brazil","australia":"Australia"}.get(c,"Location varies")),("Address",address or "Location varies")])
     source_link=('<a class="source-link" href="'+esc(source_url)+'" target="_blank" rel="nofollow noopener">View original menu source ↗</a>' if source_url else "")
     notice='<div class="menu-notice"><span>ℹ️</span><div><b>Source-faithful menu</b><span>The menu wording and listed source lines are preserved. Prices and availability can still vary by location, date and ordering channel.</span></div>'+source_link+'</div>'
+    seo_heads=d.get("seoHeadings") or [brand+" Menu & Prices",brand+" Restaurant Menu",brand+" Popular Menu Items"]
+    seo_terms=d.get("seoKeywords") or [brand+" menu",brand+" menu prices",brand+" restaurant menu"]
+    seo_blocks=[]; chunk=max(1,(len(seo_terms)+len(seo_heads)-1)//len(seo_heads))
+    for idx,head in enumerate(seo_heads):
+        terms=seo_terms[idx*chunk:(idx+1)*chunk]
+        if terms:
+            seo_blocks.append('<section class="section seo-keyword-section"><h2>'+esc(head)+'</h2><p>'+esc(brand)+' information for this location includes '+esc(", ".join(terms))+'. Confirm current menu availability and local pricing with the restaurant.</p></section>')
+    seo_html="".join(seo_blocks)
     faq='<section class="section faq"><h2>About '+esc(brand)+' menu prices</h2><details><summary>Do '+esc(brand)+' menu prices vary by location?</summary><p>Yes. Prices and availability can vary by restaurant location, ordering channel and date.</p></details><details><summary>How was this menu page created?</summary><p>The supplied source was read and its menu lines were preserved; MenuRadar changes the presentation, not the source wording.</p></details></section>'
-    return source_marker + f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{esc(d.get("title"))}</title><meta name="description" content="{esc(d.get("metaDescription"))}"><meta name="robots" content="index,follow"><link rel="canonical" href="{BASE}/{esc(c)}/{esc(d.get("slug"))}/"><link rel="stylesheet" href="/styles.css"><style>.source-link{{display:inline-flex;margin-top:10px;font-weight:700;text-decoration:none}}.source-copy{{margin-top:10px}}.source-line{{font-size:.94rem;line-height:1.55;margin:3px 0;color:#344054}}.source-detail{{grid-column:1/-1;padding:12px 14px;background:#f8fafc;border-radius:10px}}.menu-card{{min-height:0}}.menu-card h3{{margin:0}}.menu-grid{{align-items:start}}</style></head><body><header class="site-header"><a class="logo" href="/">Menu<span>Radar</span></a></header><main><section class="menu-hero"><div class="menu-hero-inner"><p class="eyebrow">{esc(c.upper())} RESTAURANT MENU</p><h1>{esc(d.get("keyword"))}{(" — "+esc(loc)) if loc else ""}</h1><p class="lead">{esc(d.get("intro"))}</p>{cover}</div></section><div class="menu-layout"><div class="menu-main">{notice}<div class="facts">{facts_html}</div>{''.join(secs)}{inside}<section class="section" style="padding:55px 0 10px"><h2>Related Menu Searches</h2><div class="related">{rel_html}</div><p class="disclaimer">MenuRadar presents source-based menu information. Confirm current prices and availability with the local restaurant.</p></section></div></div>{faq}</main><footer><div class="footer-inner"><b>MenuRadar</b><span>Restaurant Menus, Prices & More</span></div></footer></body></html>'''
+    return source_marker + f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{esc(d.get("title"))}</title><meta name="description" content="{esc(d.get("metaDescription"))}"><meta name="robots" content="index,follow"><link rel="canonical" href="{BASE}/{esc(c)}/{esc(d.get("slug"))}/"><link rel="stylesheet" href="/styles.css"><style>.source-link{{display:inline-flex;margin-top:10px;font-weight:700;text-decoration:none}}.source-copy{{margin-top:10px}}.source-line{{font-size:.94rem;line-height:1.55;margin:3px 0;color:#344054}}.source-detail{{grid-column:1/-1;padding:12px 14px;background:#f8fafc;border-radius:10px}}.menu-card{{min-height:0}}.menu-card h3{{margin:0}}.menu-grid{{align-items:start}}</style></head><body><header class="site-header"><a class="logo" href="/">Menu<span>Radar</span></a></header><main><section class="menu-hero"><div class="menu-hero-inner"><p class="eyebrow">{esc(c.upper())} RESTAURANT MENU</p><h1>{esc(d.get("keyword"))}{(" — "+esc(loc)) if loc else ""}</h1><p class="lead">{esc(d.get("intro"))}</p>{cover}</div></section><div class="menu-layout"><div class="menu-main">{notice}<div class="facts">{facts_html}</div>{''.join(secs)}{inside}{seo_html}<section class="section" style="padding:55px 0 10px"><h2>Related Menu Searches</h2><div class="related">{rel_html}</div><p class="disclaimer">MenuRadar presents source-based menu information. Confirm current prices and availability with the local restaurant.</p></section></div></div>{faq}</main><footer><div class="footer-inner"><b>MenuRadar</b><span>Restaurant Menus, Prices & More</span></div></footer></body></html>'''
 
 def validate_for_publish(d, rendered_html, path):
     keyword=(d.get("keyword") or "").strip().lower()
@@ -342,6 +371,12 @@ def validate_for_publish(d, rendered_html, path):
     visible=html.unescape(re.sub(r"\s+"," ",re.sub(r"<[^>]+>"," ",rendered_html))).lower()
     if visible.count(keyword) < 3:
         raise RuntimeError(f"SEO validation failed: primary keyword must appear at least 3 times; found {visible.count(keyword)}")
+    seo_terms=d.get("seoKeywords") or []
+    matched=sum(1 for term in seo_terms if term.lower() in visible)
+    if len(seo_terms)>=30 and matched<30:
+        raise RuntimeError(f"SEO validation failed: at least 30 SEO keyword phrases must be present; found {matched}")
+    if len(re.findall(r"<h2\\b",rendered_html,re.I))<8:
+        raise RuntimeError("SEO validation failed: expected keyword-focused H2 headings")
     if visible.count(brand) < 3:
         raise RuntimeError(f"SEO validation failed: brand must appear at least 3 times; found {visible.count(brand)}")
     canonical=f'{BASE}/{d.get("country")}/{d.get("slug")}/'
@@ -448,7 +483,12 @@ def main():
     menu_id=menu_fingerprint(d)
     menu_name_id=menu_name_fingerprint(d)
     same_menu=find_existing_menu_by_content(menu_id, menu_name_id, _menu_name_set_from_data(d))
-    if same_menu and not existing:
+    allow_location_variant=False
+    if same_menu and not existing and d.get("brand","").strip().lower()=="pizza hut":
+        variant_hint=source_slug_hint(d.get("source_url",""))
+        if variant_hint and re.search(r"(street|st|road|rd|avenue|ave|drive|dr|lane|ln|boulevard|blvd|highway|hwy|suite|ste|pkwy)",variant_hint,re.I):
+            allow_location_variant=True
+    if same_menu and not existing and not allow_location_variant:
         d["status"]="Already published — same menu blocked"
         write_agent_preview("⚠️ This menu is already published at "+same_menu+". Agent blocked the new article even though the source URL is different.",d,[],True)
         print(json.dumps({"status":"duplicate_menu","existing_path":same_menu,"action":"skipped"},ensure_ascii=False))
