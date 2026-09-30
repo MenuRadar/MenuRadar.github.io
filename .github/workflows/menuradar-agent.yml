@@ -43,10 +43,18 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           AGENT_SOURCE: ${{ github.event.client_payload.source || inputs.source }}
-          AGENT_SOURCE_URL: ${{ github.event.client_payload.source_url || inputs.source_url || 'https://menupricetoday.com/us/brands/kfc/menu?branch=kfc-2662-main-st-f72e2a7b' }}
+          AGENT_SOURCE_URL: ${{ github.event.client_payload.source_url || inputs.source_url || '' }}
           MAX_IMAGES: ${{ github.event.client_payload.max_images || inputs.max_images || '4' }}
           EDIT_EXISTING: ${{ github.event.client_payload.edit_existing || inputs.edit_existing || 'false' }}
-        run: python scripts/menuradar_agent.py
+        run: |
+          if [ "${{ github.event_name }}" = "push" ] && [ -z "$AGENT_SOURCE_URL" ]; then
+            export AGENT_SOURCE_URL="$(sed -n '1p' .github/agent-run.txt | tr -d '\r')"
+          fi
+          if [ -z "$AGENT_SOURCE_URL" ]; then
+            export AGENT_SOURCE_URL="https://menupricetoday.com/us/brands/kfc/menu?branch=kfc-2662-main-st-f72e2a7b"
+          fi
+          echo "Publishing source: $AGENT_SOURCE_URL"
+          python scripts/menuradar_agent.py
       - name: Commit generated article and images
         run: |
           git config user.name "MenuRadar Agent"
