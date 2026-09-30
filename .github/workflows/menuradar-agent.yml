@@ -49,6 +49,7 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "push" ] && [ -z "$AGENT_SOURCE_URL" ]; then
             export AGENT_SOURCE_URL="$(sed -n '1p' .github/agent-run.txt | tr -d '\r')"
+            export EDIT_EXISTING="$(sed -n 's/^edit=//p' .github/agent-run.txt | head -n1 | tr -d '\r')"
           fi
           if [ -z "$AGENT_SOURCE_URL" ]; then
             export AGENT_SOURCE_URL="https://menupricetoday.com/us/brands/kfc/menu?branch=kfc-2662-main-st-f72e2a7b"
