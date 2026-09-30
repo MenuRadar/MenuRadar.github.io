@@ -294,7 +294,7 @@ def html_menu_name_fingerprint(markup):
     rows=sorted(set(name for name,_ in _menu_rows_from_html(markup)))
     if len(rows)<8: return ""
     import hashlib
-    return hashlib.sha256("\\n".join(rows).encode("utf-8")).hexdigest()
+    return hashlib.sha256("\n".join(rows).encode("utf-8")).hexdigest()
 
 def html_menu_fingerprint(markup):
     """Read fingerprints from newer articles, or reconstruct older menu-card HTML."""
