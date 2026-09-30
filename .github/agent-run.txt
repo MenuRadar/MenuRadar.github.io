@@ -1,2 +1,3 @@
 https://menupricetoday.com/us/brands/pizza-hut/menu?branch=pizza-hut-8880-bellaire-blvd-d-7d2cf8e1
 edit=true
+retry=location-clean
